@@ -849,6 +849,219 @@ install_amneziawg() {
     enable_ipv6_forwarding
 }
 
+config_awg_defaults() {
+    echo -e "${green}═══════════════════════════════════════════${plain}"
+    echo -e "${green}     AmneziaWG Auto-Configuration          ${plain}"
+    echo -e "${green}═══════════════════════════════════════════${plain}"
+
+    local db_path="/etc/x-ui/x-ui.db"
+    if [[ ! -f "$db_path" ]]; then
+        echo -e "${yellow}Database not found yet, skipping AWG auto-config.${plain}"
+        return
+    fi
+
+    # Check if sqlite3 is available, install if not
+    if ! command -v sqlite3 &>/dev/null; then
+        case "${release}" in
+            ubuntu | debian | armbian) apt-get install -y -q sqlite3 2>/dev/null ;;
+            fedora | amzn | rhel | almalinux | rocky | ol | centos) dnf install -y sqlite 2>/dev/null || yum install -y sqlite 2>/dev/null ;;
+            arch | manjaro | parch) pacman -Syu --noconfirm sqlite 2>/dev/null ;;
+            alpine) apk add sqlite 2>/dev/null ;;
+            *) apt-get install -y -q sqlite3 2>/dev/null ;;
+        esac
+    fi
+
+    if ! command -v sqlite3 &>/dev/null; then
+        echo -e "${yellow}sqlite3 not available, skipping AWG auto-config.${plain}"
+        return
+    fi
+
+    # Skip if AWG server already configured
+    local existing=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM awg_servers;" 2>/dev/null)
+    if [[ "$existing" -gt 0 ]]; then
+        echo -e "${green}AmneziaWG already configured, skipping.${plain}"
+        return
+    fi
+
+    # --- Detect server public IPv4 ---
+    local server_ipv4=""
+    local ipv4_urls=("https://api4.ipify.org" "https://ipv4.icanhazip.com" "https://4.ident.me")
+    for url in "${ipv4_urls[@]}"; do
+        server_ipv4=$(curl -4 -s --max-time 3 "$url" 2>/dev/null | tr -d '[:space:]')
+        if [[ -n "$server_ipv4" ]]; then break; fi
+    done
+    echo -e "  Detected server IPv4: ${green}${server_ipv4:-not found}${plain}"
+
+    # --- Detect default network interface ---
+    local ext_iface=""
+    ext_iface=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
+    if [[ -z "$ext_iface" ]]; then
+        ext_iface=$(ip -6 route show default 2>/dev/null | awk '/default/ {print $5; exit}')
+    fi
+    if [[ -z "$ext_iface" ]]; then
+        ext_iface="eth0"
+    fi
+    echo -e "  External interface:   ${green}${ext_iface}${plain}"
+
+    # --- Detect IPv6 ---
+    local server_ipv6=""
+    local ipv6_prefix=""
+    local ipv6_addr_on_iface=""
+    local ipv6_enabled=0
+
+    # Get the global (non-link-local) IPv6 address on the external interface
+    ipv6_addr_on_iface=$(ip -6 addr show dev "$ext_iface" scope global 2>/dev/null \
+        | grep -oP 'inet6\s+\K[0-9a-f:]+/\d+' | head -1)
+
+    if [[ -n "$ipv6_addr_on_iface" ]]; then
+        ipv6_enabled=1
+        server_ipv6="$ipv6_addr_on_iface"
+
+        # Extract base address and prefix length
+        local ipv6_base="${ipv6_addr_on_iface%%/*}"
+        local ipv6_mask="${ipv6_addr_on_iface##*/}"
+
+        echo -e "  Detected server IPv6: ${green}${server_ipv6}${plain}"
+
+        # Determine AWG IPv6 pool
+        # If server has /64 or larger, we allocate a /112 from it for AWG clients
+        # If server has /112 or smaller, we use the whole subnet
+        if [[ "$ipv6_mask" -le 64 ]]; then
+            # Use a /112 within the /64 for AWG
+            # Take the /64 prefix and append ::a00:0/112 to avoid conflicts with the main server address
+            local prefix64=$(echo "$ipv6_base" | sed -E 's/:[0-9a-f]*:[0-9a-f]*:[0-9a-f]*:[0-9a-f]*$//; s/::.*/::/;')
+            # Normalize: use sipcalc or manual approach
+            # Simpler: take first 4 groups of the IPv6 address for the /64 prefix
+            prefix64=$(python3 -c "
+import ipaddress
+addr = ipaddress.ip_address('${ipv6_base}')
+net = ipaddress.ip_network(str(addr) + '/${ipv6_mask}', strict=False)
+# Get the network address of the /64
+net64 = ipaddress.ip_network(str(net.network_address) + '/64', strict=False)
+print(str(net64.network_address))
+" 2>/dev/null)
+            if [[ -n "$prefix64" ]]; then
+                ipv6_prefix="${prefix64%::}:a00::/112"
+                local awg_server_ipv6="${prefix64%::}:a00::1/112"
+            else
+                # Fallback: disable IPv6 auto-config
+                ipv6_enabled=0
+                echo -e "  ${yellow}Could not parse IPv6 prefix, disabling IPv6 auto-config.${plain}"
+            fi
+        else
+            # Subnet is /112 or smaller — use it directly
+            ipv6_prefix=$(python3 -c "
+import ipaddress
+net = ipaddress.ip_network('${ipv6_addr_on_iface}', strict=False)
+print(str(net))
+" 2>/dev/null)
+            local awg_server_ipv6=$(python3 -c "
+import ipaddress
+net = ipaddress.ip_network('${ipv6_addr_on_iface}', strict=False)
+first = net.network_address + 1
+print(str(first) + '/' + str(net.prefixlen))
+" 2>/dev/null)
+        fi
+
+        if [[ "$ipv6_enabled" -eq 1 ]]; then
+            echo -e "  AWG IPv6 pool:        ${green}${ipv6_prefix}${plain}"
+            echo -e "  AWG IPv6 server addr: ${green}${awg_server_ipv6}${plain}"
+        fi
+    else
+        echo -e "  IPv6: ${yellow}not detected on ${ext_iface}${plain}"
+    fi
+
+    # --- Detect IPv6 gateway ---
+    local ipv6_gateway=""
+    if [[ "$ipv6_enabled" -eq 1 ]]; then
+        ipv6_gateway=$(ip -6 route show default 2>/dev/null | awk '/default/ {print $3; exit}')
+        if [[ -n "$ipv6_gateway" ]]; then
+            echo -e "  IPv6 gateway:         ${green}${ipv6_gateway}${plain}"
+        fi
+    fi
+
+    # --- Generate WireGuard keys for server ---
+    local server_privkey=""
+    local server_pubkey=""
+    if command -v awg &>/dev/null; then
+        server_privkey=$(awg genkey 2>/dev/null)
+        server_pubkey=$(echo "$server_privkey" | awg pubkey 2>/dev/null)
+    elif command -v wg &>/dev/null; then
+        server_privkey=$(wg genkey 2>/dev/null)
+        server_pubkey=$(echo "$server_privkey" | wg pubkey 2>/dev/null)
+    fi
+
+    if [[ -z "$server_privkey" ]]; then
+        echo -e "  ${yellow}Cannot generate keys (awg/wg not found). Keys will be generated by the panel on first access.${plain}"
+    else
+        echo -e "  Server keys:          ${green}generated${plain}"
+    fi
+
+    # --- Find free port for AWG ---
+    local awg_port=51820
+    while is_port_in_use "$awg_port"; do
+        awg_port=$((awg_port + 1))
+        if [[ "$awg_port" -gt 52000 ]]; then
+            awg_port=51820
+            break
+        fi
+    done
+    echo -e "  AWG listen port:      ${green}${awg_port}${plain}"
+
+    # --- Endpoint ---
+    local endpoint="${server_ipv4}"
+    if [[ -z "$endpoint" ]]; then
+        endpoint=$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo "")
+    fi
+
+    # --- Write defaults to DB ---
+    echo -e ""
+    echo -e "${green}Writing AmneziaWG defaults to database...${plain}"
+
+    local now_ms=$(date +%s%3N 2>/dev/null || echo "$(date +%s)000")
+
+    sqlite3 "$db_path" "INSERT INTO awg_servers (
+        enable, interface_name, listen_port, mtu,
+        private_key, public_key,
+        ipv4_address, ipv4_pool,
+        ipv6_enabled, ipv6_address, ipv6_pool, ipv6_gateway,
+        jc, jmin, jmax, s1, s2, h1, h2, h3, h4,
+        dns, external_interface, post_up, post_down, endpoint,
+        created_at, updated_at
+    ) VALUES (
+        0, 'awg0', ${awg_port}, 1420,
+        '${server_privkey}', '${server_pubkey}',
+        '10.66.66.1/24', '10.66.66.0/24',
+        ${ipv6_enabled}, '${awg_server_ipv6:-}', '${ipv6_prefix:-}', '${ipv6_gateway:-}',
+        4, 50, 1000, 0, 0, 1, 2, 3, 4,
+        '1.1.1.1,2606:4700:4700::1111', '${ext_iface}', '', '', '${endpoint}',
+        ${now_ms}, ${now_ms}
+    );" 2>/dev/null
+
+    if [[ $? -eq 0 ]]; then
+        echo -e "${green}AmneziaWG configured successfully!${plain}"
+        echo -e ""
+        echo -e "${green}═══════════════════════════════════════════${plain}"
+        echo -e "  Interface:    awg0"
+        echo -e "  Listen port:  ${awg_port}"
+        echo -e "  Endpoint:     ${endpoint}"
+        echo -e "  IPv4 pool:    10.66.66.0/24"
+        if [[ "$ipv6_enabled" -eq 1 ]]; then
+            echo -e "  IPv6 pool:    ${ipv6_prefix}"
+            echo -e "  IPv6 mode:    ${green}Native public addresses (NDP proxy)${plain}"
+        else
+            echo -e "  IPv6:         ${yellow}disabled (no IPv6 detected)${plain}"
+        fi
+        echo -e "${green}═══════════════════════════════════════════${plain}"
+        echo -e ""
+        echo -e "  Open the panel → ${blue}AmneziaWG${plain} page to enable and manage clients."
+        echo -e ""
+    else
+        echo -e "${yellow}Failed to write AWG defaults (table may not exist yet).${plain}"
+        echo -e "${yellow}AWG will be configured on first panel access.${plain}"
+    fi
+}
+
 install_x-ui() {
     cd ${xui_folder%/x-ui}/
     
@@ -923,6 +1136,7 @@ install_x-ui() {
     chmod +x /usr/bin/x-ui
     mkdir -p /var/log/x-ui
     config_after_install
+    config_awg_defaults
 
     # Etckeeper compatibility
     if [ -d "/etc/.git" ]; then

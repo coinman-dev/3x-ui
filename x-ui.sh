@@ -200,6 +200,58 @@ uninstall() {
         systemctl reset-failed
     fi
 
+    # --- AmneziaWG cleanup ---
+    echo -e "${yellow}Cleaning up AmneziaWG components...${plain}"
+
+    # Stop AWG interface(s)
+    for conf in /etc/amnezia/amneziawg/*.conf; do
+        if [[ -f "$conf" ]]; then
+            iface=$(basename "$conf" .conf)
+            echo "Stopping AmneziaWG interface: $iface"
+            awg-quick down "$conf" 2>/dev/null
+        fi
+    done
+
+    # Remove AWG config directory
+    rm -rf /etc/amnezia/amneziawg/
+
+    # Stop and disable ndppd
+    if systemctl is-active --quiet ndppd 2>/dev/null; then
+        systemctl stop ndppd
+    fi
+    if systemctl is-enabled --quiet ndppd 2>/dev/null; then
+        systemctl disable ndppd
+    fi
+    rm -f /etc/ndppd.conf
+
+    # Clean up manual NDP proxy entries (if any)
+    ip -6 neigh show proxy 2>/dev/null | while read -r line; do
+        addr=$(echo "$line" | awk '{print $1}')
+        dev=$(echo "$line" | awk '{print $3}')
+        if [[ -n "$addr" && -n "$dev" ]]; then
+            ip -6 neigh del proxy "$addr" dev "$dev" 2>/dev/null
+        fi
+    done
+
+    # Ask if user wants to uninstall AWG and ndppd packages
+    confirm "Do you want to uninstall amneziawg-tools and ndppd packages?" "y"
+    if [[ $? == 0 ]]; then
+        if command -v apt-get &>/dev/null; then
+            apt-get remove -y amneziawg-tools ndppd 2>/dev/null
+            apt-get autoremove -y 2>/dev/null
+        elif command -v yum &>/dev/null; then
+            yum remove -y amneziawg-tools ndppd 2>/dev/null
+        elif command -v dnf &>/dev/null; then
+            dnf remove -y amneziawg-tools ndppd 2>/dev/null
+        elif command -v apk &>/dev/null; then
+            apk del amneziawg-tools ndppd 2>/dev/null
+        fi
+        echo -e "${green}AmneziaWG packages removed.${plain}"
+    fi
+
+    echo -e "${green}AmneziaWG cleanup complete.${plain}"
+    # --- End AmneziaWG cleanup ---
+
     rm /etc/x-ui/ -rf
     rm ${xui_folder}/ -rf
 

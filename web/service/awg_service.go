@@ -310,7 +310,7 @@ func (s *AwgService) UpdateTrafficStats() {
 		}
 
 		// Calculate delta (peer stats are cumulative since interface up)
-		newUp := peer.TransferTx  // from server perspective: TX to peer = client's upload perspective is reversed
+		newUp := peer.TransferTx // from server perspective: TX to peer = client's upload perspective is reversed
 		newDown := peer.TransferRx
 
 		// Update only if there's actual traffic change

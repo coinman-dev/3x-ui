@@ -24,7 +24,7 @@ type PeerStatus struct {
 	Endpoint            string `json:"endpoint"`
 	LatestHandshake     int64  `json:"latestHandshake"` // unix timestamp
 	TransferRx          int64  `json:"transferRx"`      // bytes received
-	TransferTx          int64  `json:"transferTx"`       // bytes transmitted
+	TransferTx          int64  `json:"transferTx"`      // bytes transmitted
 	PersistentKeepalive int    `json:"persistentKeepalive"`
 }
 

@@ -1,0 +1,18 @@
+package job
+
+import (
+	"github.com/mhsanaei/3x-ui/v2/web/service"
+)
+
+// AwgTrafficJob periodically collects AmneziaWG peer traffic stats and updates the database.
+type AwgTrafficJob struct {
+	awgService service.AwgService
+}
+
+func NewAwgTrafficJob() *AwgTrafficJob {
+	return new(AwgTrafficJob)
+}
+
+func (j *AwgTrafficJob) Run() {
+	j.awgService.UpdateTrafficStats()
+}

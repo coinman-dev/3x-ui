@@ -14,6 +14,7 @@ type APIController struct {
 	BaseController
 	inboundController *InboundController
 	serverController  *ServerController
+	awgController     *AwgController
 	Tgbot             service.Tgbot
 }
 
@@ -47,6 +48,10 @@ func (a *APIController) initRouter(g *gin.RouterGroup) {
 	// Server API
 	server := api.Group("/server")
 	a.serverController = NewServerController(server)
+
+	// AmneziaWG API
+	awgGroup := api.Group("/awg")
+	a.awgController = NewAwgController(awgGroup)
 
 	// Extra routes
 	api.GET("/backuptotgbot", a.BackuptoTgbot)

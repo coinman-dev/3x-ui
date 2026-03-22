@@ -1,0 +1,560 @@
+{{ template "page/head_start" .}}
+{{ template "page/head_end" .}}
+
+{{ template "page/body_start" .}}
+<a-layout id="app" v-cloak :class="themeSwitcher.currentTheme + ' awg-page'">
+  <a-sidebar></a-sidebar>
+  <a-layout id="content-layout">
+    <a-layout-content>
+      <a-spin :spinning="loading" :delay="200" tip="Loading...">
+        <a-row :gutter="[isMobile ? 8 : 16, isMobile ? 0 : 12]" v-if="!loading || serverLoaded">
+
+          <!-- Server Settings Card -->
+          <a-col :span="24">
+            <a-card hoverable>
+              <template #title>
+                <a-space direction="horizontal">
+                  <a-icon type="cloud-server"></a-icon>
+                  <span>AmneziaWG Server</span>
+                  <a-tag v-if="status.awgInstalled" color="green">v[[ status.awgVersion ]]</a-tag>
+                  <a-tag v-else color="red">Not Installed</a-tag>
+                </a-space>
+              </template>
+              <template #extra>
+                <a-space direction="horizontal">
+                  <a-badge :status="status.running ? 'processing' : 'default'"
+                    :text="status.running ? 'Running' : 'Stopped'"
+                    :color="status.running ? 'green' : 'grey'" />
+                  <a-switch :checked="server.enable" @change="toggleServer"
+                    :loading="toggling" checked-children="ON" un-checked-children="OFF" />
+                </a-space>
+              </template>
+
+              <a-collapse v-model="activePanel" :bordered="false">
+                <a-collapse-panel key="network" header="Network Settings">
+                  <a-row :gutter="16">
+                    <a-col :sm="24" :md="8">
+                      <a-form-item label="Interface Name">
+                        <a-input v-model="server.interfaceName" placeholder="awg0" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :sm="24" :md="8">
+                      <a-form-item label="Listen Port">
+                        <a-input-number v-model="server.listenPort" :min="1" :max="65535" style="width:100%" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :sm="24" :md="8">
+                      <a-form-item label="MTU">
+                        <a-input-number v-model="server.mtu" :min="1280" :max="9000" style="width:100%" />
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+                  <a-row :gutter="16">
+                    <a-col :sm="24" :md="12">
+                      <a-form-item label="Server Public Key">
+                        <a-input :value="server.publicKey" disabled>
+                          <a-tooltip slot="suffix" title="Copy">
+                            <a-icon type="copy" @click="copyText(server.publicKey)" style="cursor:pointer" />
+                          </a-tooltip>
+                        </a-input>
+                      </a-form-item>
+                    </a-col>
+                    <a-col :sm="24" :md="12">
+                      <a-form-item label="Endpoint (Public IP/Domain)">
+                        <a-input v-model="server.endpoint" placeholder="your-server-ip-or-domain" />
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+                  <a-row :gutter="16">
+                    <a-col :sm="24" :md="8">
+                      <a-form-item label="IPv4 Server Address">
+                        <a-input v-model="server.ipv4Address" placeholder="10.66.66.1/24" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :sm="24" :md="8">
+                      <a-form-item label="IPv4 Pool">
+                        <a-input v-model="server.ipv4Pool" placeholder="10.66.66.0/24" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :sm="24" :md="8">
+                      <a-form-item label="External Interface">
+                        <a-input v-model="server.externalInterface" placeholder="eth0" />
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+                  <a-divider>IPv6 (Native Public Addresses)</a-divider>
+                  <a-row :gutter="16">
+                    <a-col :sm="24" :md="6">
+                      <a-form-item label="Enable IPv6">
+                        <a-switch v-model="server.ipv6Enabled" checked-children="ON" un-checked-children="OFF" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :sm="24" :md="6">
+                      <a-form-item label="IPv6 Server Address">
+                        <a-input v-model="server.ipv6Address" placeholder="2a01:xxx::1/112" :disabled="!server.ipv6Enabled" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :sm="24" :md="6">
+                      <a-form-item label="IPv6 Pool">
+                        <a-input v-model="server.ipv6Pool" placeholder="2a01:xxx::/112" :disabled="!server.ipv6Enabled" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :sm="24" :md="6">
+                      <a-form-item label="IPv6 Gateway">
+                        <a-input v-model="server.ipv6Gateway" placeholder="fe80::1" :disabled="!server.ipv6Enabled" />
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+                  <a-form-item label="DNS (for clients)">
+                    <a-input v-model="server.dns" placeholder="1.1.1.1,2606:4700:4700::1111" />
+                  </a-form-item>
+                </a-collapse-panel>
+
+                <a-collapse-panel key="obfuscation" header="Obfuscation Parameters (AmneziaWG)">
+                  <a-alert type="info" class="mb-10"
+                    message="These parameters must match between server and all clients. Changing them will break existing connections."
+                    show-icon />
+                  <a-row :gutter="16">
+                    <a-col :xs="12" :sm="8" :md="4">
+                      <a-form-item label="Jc">
+                        <a-input-number v-model="server.jc" :min="0" style="width:100%" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="12" :sm="8" :md="4">
+                      <a-form-item label="Jmin">
+                        <a-input-number v-model="server.jmin" :min="0" style="width:100%" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="12" :sm="8" :md="4">
+                      <a-form-item label="Jmax">
+                        <a-input-number v-model="server.jmax" :min="0" style="width:100%" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="12" :sm="8" :md="4">
+                      <a-form-item label="S1">
+                        <a-input-number v-model="server.s1" :min="0" style="width:100%" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="12" :sm="8" :md="4">
+                      <a-form-item label="S2">
+                        <a-input-number v-model="server.s2" :min="0" style="width:100%" />
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+                  <a-row :gutter="16">
+                    <a-col :xs="12" :sm="6" :md="3">
+                      <a-form-item label="H1">
+                        <a-input-number v-model="server.h1" :min="0" style="width:100%" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="12" :sm="6" :md="3">
+                      <a-form-item label="H2">
+                        <a-input-number v-model="server.h2" :min="0" style="width:100%" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="12" :sm="6" :md="3">
+                      <a-form-item label="H3">
+                        <a-input-number v-model="server.h3" :min="0" style="width:100%" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="12" :sm="6" :md="3">
+                      <a-form-item label="H4">
+                        <a-input-number v-model="server.h4" :min="0" style="width:100%" />
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+                </a-collapse-panel>
+
+                <a-collapse-panel key="scripts" header="PostUp / PostDown Scripts">
+                  <a-alert type="warning" class="mb-10"
+                    message="Leave empty to use auto-generated iptables/forwarding rules. Custom scripts override the defaults."
+                    show-icon />
+                  <a-form-item label="PostUp">
+                    <a-textarea v-model="server.postUp" :auto-size="{ minRows: 2, maxRows: 6 }"
+                      placeholder="Auto-generated if empty" />
+                  </a-form-item>
+                  <a-form-item label="PostDown">
+                    <a-textarea v-model="server.postDown" :auto-size="{ minRows: 2, maxRows: 6 }"
+                      placeholder="Auto-generated if empty" />
+                  </a-form-item>
+                </a-collapse-panel>
+              </a-collapse>
+
+              <div style="margin-top: 16px; text-align: right;">
+                <a-button type="primary" icon="save" @click="saveServer" :loading="saving">
+                  Save Settings
+                </a-button>
+              </div>
+            </a-card>
+          </a-col>
+
+          <!-- Clients Card -->
+          <a-col :span="24">
+            <a-card hoverable>
+              <template #title>
+                <a-space direction="horizontal">
+                  <a-icon type="team"></a-icon>
+                  <span>Clients</span>
+                  <a-tag color="blue">[[ clients.length ]]</a-tag>
+                </a-space>
+              </template>
+              <template #extra>
+                <a-button type="primary" icon="plus" @click="openAddClient">
+                  Add Client
+                </a-button>
+              </template>
+
+              <a-table :columns="columns" :data-source="clients" row-key="id"
+                :pagination="clients.length > 10 ? { pageSize: 10 } : false"
+                :scroll="{ x: 800 }" size="middle">
+
+                <template slot="enable" slot-scope="text, record">
+                  <a-switch :checked="record.enable" size="small"
+                    @change="(checked) => toggleClient(record.id, checked)" />
+                </template>
+
+                <template slot="name" slot-scope="text, record">
+                  <span>[[ record.name ]]</span>
+                  <br v-if="record.comment">
+                  <small style="opacity:0.6" v-if="record.comment">[[ record.comment ]]</small>
+                </template>
+
+                <template slot="ipv4" slot-scope="text, record">
+                  <code>[[ record.ipv4Address ]]</code>
+                </template>
+
+                <template slot="ipv6" slot-scope="text, record">
+                  <code v-if="record.ipv6Address">[[ record.ipv6Address ]]</code>
+                  <span v-else style="opacity:0.4">—</span>
+                </template>
+
+                <template slot="traffic" slot-scope="text, record">
+                  <span>↑ [[ SizeFormatter.sizeFormat(record.upload) ]]</span>
+                  <br>
+                  <span>↓ [[ SizeFormatter.sizeFormat(record.download) ]]</span>
+                </template>
+
+                <template slot="actions" slot-scope="text, record">
+                  <a-space>
+                    <a-tooltip title="Download Config">
+                      <a-button size="small" icon="download" @click="downloadConfig(record)" />
+                    </a-tooltip>
+                    <a-tooltip title="Show QR Code">
+                      <a-button size="small" icon="qrcode" @click="showQrCode(record)" />
+                    </a-tooltip>
+                    <a-tooltip title="Show Config">
+                      <a-button size="small" icon="file-text" @click="showConfigText(record)" />
+                    </a-tooltip>
+                    <a-tooltip title="Reset Traffic">
+                      <a-button size="small" icon="reload" @click="resetTraffic(record.id)" />
+                    </a-tooltip>
+                    <a-popconfirm title="Delete this client?" @confirm="deleteClient(record.id)"
+                      ok-text="Yes" cancel-text="No">
+                      <a-button size="small" type="danger" icon="delete" />
+                    </a-popconfirm>
+                  </a-space>
+                </template>
+              </a-table>
+            </a-card>
+          </a-col>
+        </a-row>
+      </a-spin>
+    </a-layout-content>
+  </a-layout>
+</a-layout>
+
+<!-- Add Client Modal -->
+<a-modal id="add-client-modal" v-model="addClientModal.visible" title="Add Client"
+  :class="themeSwitcher.currentTheme" @ok="submitAddClient" :confirm-loading="addClientModal.loading">
+  <a-form :label-col="{ span: 8 }" :wrapper-col="{ span: 16 }">
+    <a-form-item label="Name" required>
+      <a-input v-model="addClientModal.client.name" placeholder="Client name" />
+    </a-form-item>
+    <a-form-item label="Email (ID)" required>
+      <a-input v-model="addClientModal.client.email" placeholder="Unique identifier" />
+    </a-form-item>
+    <a-form-item label="Comment">
+      <a-input v-model="addClientModal.client.comment" placeholder="Optional comment" />
+    </a-form-item>
+    <a-form-item label="Traffic Limit (GB)">
+      <a-input-number v-model="addClientModal.totalGB" :min="0" style="width:100%"
+        placeholder="0 = unlimited" />
+    </a-form-item>
+    <a-form-item label="Expiry Date">
+      <a-date-picker v-model="addClientModal.expiryMoment" style="width:100%"
+        :disabled-date="(d) => d && d < moment().startOf('day')"
+        :dropdown-class-name="themeSwitcher.currentTheme" />
+    </a-form-item>
+    <a-form-item label="Allowed IPs (client)">
+      <a-input v-model="addClientModal.client.clientAllowedIPs"
+        placeholder="0.0.0.0/0, ::/0" />
+    </a-form-item>
+    <a-form-item label="Keepalive (sec)">
+      <a-input-number v-model="addClientModal.client.persistentKeepalive" :min="0" style="width:100%" />
+    </a-form-item>
+  </a-form>
+</a-modal>
+
+<!-- QR Code Modal -->
+<a-modal id="awg-qr-modal" v-model="qrModal.visible" :title="qrModal.title"
+  :class="themeSwitcher.currentTheme" :footer="null" width="450px">
+  <div style="text-align:center">
+    <canvas id="awg-qrcode" style="max-width:100%"></canvas>
+    <br>
+    <a-button icon="copy" @click="copyText(qrModal.config)" style="margin-top:8px">
+      Copy Config
+    </a-button>
+  </div>
+</a-modal>
+
+<!-- Config Text Modal -->
+<a-modal id="awg-config-modal" v-model="configModal.visible" :title="configModal.title"
+  :class="themeSwitcher.currentTheme" :footer="null" width="600px">
+  <pre style="background:#f5f5f5;padding:16px;border-radius:4px;overflow-x:auto;font-size:13px">[[ configModal.config ]]</pre>
+  <div style="text-align:right;margin-top:8px">
+    <a-button icon="copy" @click="copyText(configModal.config)">Copy</a-button>
+    <a-button icon="download" type="primary" @click="downloadConfigText(configModal.title, configModal.config)" style="margin-left:8px">Download .conf</a-button>
+  </div>
+</a-modal>
+
+{{template "page/body_scripts" .}}
+<script src="{{ .base_path }}assets/qrcode/qrious2.min.js?{{ .cur_ver }}"></script>
+<script src="{{ .base_path }}assets/js/model/awg.js?{{ .cur_ver }}"></script>
+{{template "component/aSidebar" .}}
+{{template "component/aThemeSwitch" .}}
+{{template "component/aCustomStatistic" .}}
+
+<script>
+  const columns = [
+    {
+      title: '',
+      key: 'enable',
+      width: 50,
+      scopedSlots: { customRender: 'enable' },
+    },
+    {
+      title: 'Name',
+      key: 'name',
+      scopedSlots: { customRender: 'name' },
+    },
+    {
+      title: 'IPv4',
+      key: 'ipv4',
+      scopedSlots: { customRender: 'ipv4' },
+      responsive: ['md'],
+    },
+    {
+      title: 'IPv6',
+      key: 'ipv6',
+      scopedSlots: { customRender: 'ipv6' },
+      responsive: ['lg'],
+    },
+    {
+      title: 'Traffic',
+      key: 'traffic',
+      scopedSlots: { customRender: 'traffic' },
+      width: 140,
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      scopedSlots: { customRender: 'actions' },
+      width: 220,
+      align: 'center',
+    },
+  ];
+
+  const app = new Vue({
+    delimiters: ['[[', ']]'],
+    el: '#app',
+    mixins: [MediaQueryMixin],
+    data: {
+      loading: true,
+      serverLoaded: false,
+      saving: false,
+      toggling: false,
+      activePanel: ['network'],
+      server: new AwgServer(),
+      clients: [],
+      status: {
+        running: false,
+        awgInstalled: false,
+        awgVersion: 'unknown',
+      },
+      addClientModal: {
+        visible: false,
+        loading: false,
+        client: new AwgClient(),
+        totalGB: 0,
+        expiryMoment: null,
+      },
+      qrModal: {
+        visible: false,
+        title: '',
+        config: '',
+      },
+      configModal: {
+        visible: false,
+        title: '',
+        config: '',
+      },
+    },
+    async created() {
+      await this.loadData();
+    },
+    methods: {
+      async loadData() {
+        this.loading = true;
+        await Promise.all([
+          this.loadServer(),
+          this.loadClients(),
+          this.loadStatus(),
+        ]);
+        this.loading = false;
+        this.serverLoaded = true;
+      },
+      async loadServer() {
+        const msg = await HttpUtil.get('panel/api/awg/server');
+        if (msg.success) {
+          this.server = new AwgServer(msg.obj);
+        }
+      },
+      async loadClients() {
+        const msg = await HttpUtil.get('panel/api/awg/clients');
+        if (msg.success && msg.obj) {
+          this.clients = msg.obj.map(c => new AwgClient(c));
+        }
+      },
+      async loadStatus() {
+        const msg = await HttpUtil.get('panel/api/awg/server/status');
+        if (msg.success) {
+          this.status = msg.obj;
+        }
+      },
+      async saveServer() {
+        this.saving = true;
+        const msg = await HttpUtil.post('panel/api/awg/server', this.server);
+        this.saving = false;
+        if (msg.success) {
+          await this.loadStatus();
+        }
+      },
+      async toggleServer(enable) {
+        this.toggling = true;
+        const msg = await HttpUtil.post('panel/api/awg/server/toggle', { enable });
+        this.toggling = false;
+        if (msg.success) {
+          this.server.enable = enable;
+          await this.loadStatus();
+        }
+      },
+
+      // --- Client methods ---
+      openAddClient() {
+        this.addClientModal.client = new AwgClient();
+        this.addClientModal.totalGB = 0;
+        this.addClientModal.expiryMoment = null;
+        this.addClientModal.visible = true;
+      },
+      async submitAddClient() {
+        const c = this.addClientModal.client;
+        if (!c.name || !c.email) {
+          this.$message.error('Name and Email are required');
+          return;
+        }
+        c.totalGB = (this.addClientModal.totalGB || 0) * 1024 * 1024 * 1024;
+        if (this.addClientModal.expiryMoment) {
+          c.expiryTime = this.addClientModal.expiryMoment.valueOf();
+        }
+        this.addClientModal.loading = true;
+        const msg = await HttpUtil.post('panel/api/awg/client/add', c);
+        this.addClientModal.loading = false;
+        if (msg.success) {
+          this.addClientModal.visible = false;
+          await this.loadClients();
+        }
+      },
+      async toggleClient(id, enable) {
+        await HttpUtil.post(`panel/api/awg/client/toggle/${id}`, { enable });
+        await this.loadClients();
+      },
+      async deleteClient(id) {
+        const msg = await HttpUtil.post(`panel/api/awg/client/del/${id}`);
+        if (msg.success) {
+          await this.loadClients();
+        }
+      },
+      async resetTraffic(id) {
+        const msg = await HttpUtil.post(`panel/api/awg/client/resetTraffic/${id}`);
+        if (msg.success) {
+          await this.loadClients();
+        }
+      },
+      async downloadConfig(record) {
+        const msg = await HttpUtil.get(`panel/api/awg/client/${record.id}/config`);
+        if (msg.success) {
+          const config = msg.obj;
+          const blob = new Blob([config], { type: 'text/plain' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = (record.name || 'awg-client') + '.conf';
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      },
+      async showQrCode(record) {
+        const msg = await HttpUtil.get(`panel/api/awg/client/${record.id}/config`);
+        if (msg.success) {
+          this.qrModal.config = msg.obj;
+          this.qrModal.title = record.name;
+          this.qrModal.visible = true;
+          this.$nextTick(() => {
+            new QRious({
+              element: document.querySelector('#awg-qrcode'),
+              size: 380,
+              value: msg.obj,
+              background: 'white',
+              foreground: 'black',
+              padding: 8,
+              level: 'L',
+            });
+          });
+        }
+      },
+      async showConfigText(record) {
+        const msg = await HttpUtil.get(`panel/api/awg/client/${record.id}/config`);
+        if (msg.success) {
+          this.configModal.config = msg.obj;
+          this.configModal.title = record.name;
+          this.configModal.visible = true;
+        }
+      },
+      downloadConfigText(name, config) {
+        const blob = new Blob([config], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = (name || 'awg-client') + '.conf';
+        a.click();
+        URL.revokeObjectURL(url);
+      },
+      copyText(text) {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(text).then(() => {
+            this.$message.success('Copied');
+          });
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          this.$message.success('Copied');
+        }
+      },
+    },
+  });
+</script>
+{{ template "page/body_end" .}}

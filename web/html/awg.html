@@ -1,4 +1,14 @@
 {{ template "page/head_start" .}}
+<style>
+  .dark .ant-alert-info {
+    background-color: rgba(24, 144, 255, 0.15);
+    border-color: rgba(24, 144, 255, 0.35);
+  }
+  .dark .ant-alert-info .ant-alert-message,
+  .dark .ant-alert-info .ant-alert-description {
+    color: rgba(255, 255, 255, 0.85);
+  }
+</style>
 {{ template "page/head_end" .}}
 
 {{ template "page/body_start" .}}
@@ -261,7 +271,6 @@
       </a-spin>
     </a-layout-content>
   </a-layout>
-</a-layout>
 
 <!-- Add Client Modal -->
 <a-modal id="add-client-modal" v-model="addClientModal.visible" title="Add Client"
@@ -310,12 +319,14 @@
 <!-- Config Text Modal -->
 <a-modal id="awg-config-modal" v-model="configModal.visible" :title="configModal.title"
   :class="themeSwitcher.currentTheme" :footer="null" width="600px">
-  <pre style="background:#f5f5f5;padding:16px;border-radius:4px;overflow-x:auto;font-size:13px">[[ configModal.config ]]</pre>
+  <pre :style="{ background: themeSwitcher.isDarkTheme ? '#1f1f1f' : '#f5f5f5', color: themeSwitcher.isDarkTheme ? 'rgba(255,255,255,0.85)' : 'inherit', padding: '16px', borderRadius: '4px', overflow: 'auto', fontSize: '13px' }">[[ configModal.config ]]</pre>
   <div style="text-align:right;margin-top:8px">
     <a-button icon="copy" @click="copyText(configModal.config)">Copy</a-button>
     <a-button icon="download" type="primary" @click="downloadConfigText(configModal.title, configModal.config)" style="margin-left:8px">Download .conf</a-button>
   </div>
 </a-modal>
+
+</a-layout>
 
 {{template "page/body_scripts" .}}
 <script src="{{ .base_path }}assets/qrcode/qrious2.min.js?{{ .cur_ver }}"></script>
@@ -433,7 +444,7 @@
       },
       async saveServer() {
         this.saving = true;
-        const msg = await HttpUtil.post('panel/api/awg/server', this.server);
+        const msg = await HttpUtil.postJson('panel/api/awg/server', this.server);
         this.saving = false;
         if (msg.success) {
           await this.loadStatus();
@@ -467,7 +478,7 @@
           c.expiryTime = this.addClientModal.expiryMoment.valueOf();
         }
         this.addClientModal.loading = true;
-        const msg = await HttpUtil.post('panel/api/awg/client/add', c);
+        const msg = await HttpUtil.postJson('panel/api/awg/client/add', c);
         this.addClientModal.loading = false;
         if (msg.success) {
           this.addClientModal.visible = false;
@@ -475,17 +486,17 @@
         }
       },
       async toggleClient(id, enable) {
-        await HttpUtil.post(`panel/api/awg/client/toggle/${id}`, { enable });
+        await HttpUtil.postJson(`panel/api/awg/client/toggle/${id}`, { enable });
         await this.loadClients();
       },
       async deleteClient(id) {
-        const msg = await HttpUtil.post(`panel/api/awg/client/del/${id}`);
+        const msg = await HttpUtil.postJson(`panel/api/awg/client/del/${id}`);
         if (msg.success) {
           await this.loadClients();
         }
       },
       async resetTraffic(id) {
-        const msg = await HttpUtil.post(`panel/api/awg/client/resetTraffic/${id}`);
+        const msg = await HttpUtil.postJson(`panel/api/awg/client/resetTraffic/${id}`);
         if (msg.success) {
           await this.loadClients();
         }

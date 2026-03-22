@@ -794,15 +794,26 @@ install_amneziawg() {
     # Method 1: official AmneziaVPN apt repo (Debian/Ubuntu)
     if [[ "${release}" == "ubuntu" || "${release}" == "debian" || "${release}" == "armbian" ]]; then
         if ! command -v awg &>/dev/null; then
-            echo -e "${yellow}Installing amneziawg-tools from AmneziaVPN repository...${plain}"
-            apt-get install -y -q software-properties-common gnupg 2>/dev/null || true
-            # Add AmneziaVPN PPA / apt repo
+            echo -e "${yellow}Installing amneziawg from ppa:amnezia/ppa...${plain}"
+            apt-get install -y -q software-properties-common python3-launchpadlib gnupg2 linux-headers-$(uname -r) 2>/dev/null || true
+            # Ensure deb-src is present (required for PPA DKMS build)
+            if ! grep -q "^deb-src" /etc/apt/sources.list 2>/dev/null; then
+                grep "^deb " /etc/apt/sources.list | sed 's/^deb /deb-src /' >> /etc/apt/sources.list
+            fi
             if [[ "${release}" == "ubuntu" ]]; then
-                add-apt-repository -y ppa:amneziavpn/ppa 2>/dev/null && \
+                add-apt-repository -y ppa:amnezia/ppa 2>/dev/null && \
                 apt-get update -q && \
-                apt-get install -y -q amneziawg amneziawg-tools && \
+                apt-get install -y -q amneziawg && \
+                echo -e "${green}AmneziaWG installed successfully via PPA.${plain}" || \
+                echo -e "${yellow}PPA install failed, trying fallback...${plain}"
+            elif [[ "${release}" == "debian" || "${release}" == "armbian" ]]; then
+                apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 57290828 2>/dev/null || true
+                echo "deb https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu focal main" >> /etc/apt/sources.list
+                echo "deb-src https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu focal main" >> /etc/apt/sources.list
+                apt-get update -q && \
+                apt-get install -y -q amneziawg && \
                 echo -e "${green}AmneziaWG installed successfully.${plain}" || \
-                echo -e "${yellow}AmneziaVPN PPA not available, trying DKMS build...${plain}"
+                echo -e "${yellow}Debian install failed, trying fallback...${plain}"
             fi
             # Fallback: download prebuilt awg tools + install DKMS kernel module
             if ! command -v awg &>/dev/null; then

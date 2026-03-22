@@ -1,4 +1,5 @@
 #!/bin/bash
+# coinman-dev/3x-ui v2.8.13
 
 red='\033[0;31m'
 green='\033[0;32m'

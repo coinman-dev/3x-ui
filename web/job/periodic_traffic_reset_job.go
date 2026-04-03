@@ -1,6 +1,10 @@
 package job
 
 import (
+	"time"
+
+	"github.com/mhsanaei/3x-ui/v2/database"
+	"github.com/mhsanaei/3x-ui/v2/database/model"
 	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
 )
@@ -11,6 +15,7 @@ type Period string
 // PeriodicTrafficResetJob resets traffic statistics for inbounds based on their configured reset period.
 type PeriodicTrafficResetJob struct {
 	inboundService service.InboundService
+	awgService     service.AwgService
 	period         Period
 }
 
@@ -37,17 +42,23 @@ func (j *PeriodicTrafficResetJob) Run() {
 	resetCount := 0
 
 	for _, inbound := range inbounds {
-		resetInboundErr := j.inboundService.ResetAllTraffics()
-		if resetInboundErr != nil {
-			logger.Warning("Failed to reset traffic for inbound", inbound.Id, ":", resetInboundErr)
+		if inbound.Protocol == model.AmneziaWG {
+			if err := j.awgService.ResetAllClientTraffics(); err != nil {
+				logger.Warning("Failed to reset AWG client traffics:", err)
+			} else {
+				// Update lastTrafficResetTime on the AWG inbound record
+				now := time.Now().UnixMilli()
+				db := database.GetDB()
+				db.Model(model.Inbound{}).Where("id = ?", inbound.Id).Update("last_traffic_reset_time", now)
+				resetCount++
+			}
+			continue
 		}
 
 		resetClientErr := j.inboundService.ResetAllClientTraffics(inbound.Id)
 		if resetClientErr != nil {
 			logger.Warning("Failed to reset traffic for all users of inbound", inbound.Id, ":", resetClientErr)
-		}
-
-		if resetInboundErr == nil && resetClientErr == nil {
+		} else {
 			resetCount++
 		}
 	}

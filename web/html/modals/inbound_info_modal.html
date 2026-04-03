@@ -412,9 +412,6 @@
                 class="client-table-odd-row">
               </div>
             </tr-info-row>
-            <div style="text-align:center; margin-top:16px">
-              <canvas id="infoAwgQrCode" style="max-width:300px"></canvas>
-            </div>
           </template>
         </template>
         <template v-else>
@@ -833,24 +830,6 @@
         const email = this.infoModal.clientSettings ? this.infoModal.clientSettings.email : 'awg-client';
         FileManager.downloadTextFile(this.infoModal.awgConfig, `${email}.conf`);
       },
-    },
-    updated() {
-      if (this.infoModal.visible && this.infoModal.awgConfig) {
-        this.$nextTick(() => {
-          const canvas = document.querySelector('#infoAwgQrCode');
-          if (canvas) {
-            new QRious({
-              element: canvas,
-              size: 300,
-              value: this.infoModal.awgConfig,
-              background: 'white',
-              foreground: 'black',
-              padding: 4,
-              level: 'L',
-            });
-          }
-        });
-      }
     },
   });
 </script>

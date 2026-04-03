@@ -404,6 +404,14 @@ func (s *InboundService) DelInbound(id int) (bool, error) {
 		}
 	}
 
+	// Clean up AmneziaWG clients and server when deleting an AWG inbound
+	if inbound.Protocol == model.AmneziaWG {
+		awgService := AwgService{}
+		if err := awgService.DeleteAllClients(); err != nil {
+			logger.Warning("Failed to clean up AWG data:", err)
+		}
+	}
+
 	return needRestart, db.Delete(model.Inbound{}, id).Error
 }
 

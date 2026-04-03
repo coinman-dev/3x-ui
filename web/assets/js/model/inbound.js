@@ -1829,7 +1829,7 @@ Inbound.Settings = class extends XrayCommonClass {
             case Protocols.HTTP: return new Inbound.HttpSettings(protocol);
             case Protocols.WIREGUARD: return new Inbound.WireguardSettings(protocol);
             case Protocols.TUN: return new Inbound.TunSettings(protocol);
-            case Protocols.AMNEZIAWG: return new Inbound.AmneziawgSettings(protocol);
+            case Protocols.AMNEZIAWG: return new Inbound.AmneziawgSettings(protocol, [new Inbound.AmneziawgSettings.AwgPeer()]);
             default: return null;
         }
     }
@@ -2744,6 +2744,9 @@ Inbound.AmneziawgSettings.AwgPeer = class extends XrayCommonClass {
         subId = '',
         tgId = 0,
         limitIp = 0,
+        _awgId = 0,
+        created_at = 0,
+        updated_at = 0,
     ) {
         super();
         this.id = id;
@@ -2756,6 +2759,9 @@ Inbound.AmneziawgSettings.AwgPeer = class extends XrayCommonClass {
         this.subId = subId;
         this.tgId = tgId;
         this.limitIp = limitIp;
+        this._awgId = _awgId;
+        this.created_at = created_at;
+        this.updated_at = updated_at;
     }
 
     get _expiryTime() {
@@ -2783,6 +2789,9 @@ Inbound.AmneziawgSettings.AwgPeer = class extends XrayCommonClass {
             json.subId || '',
             json.tgId || 0,
             json.limitIp || 0,
+            json._awgId || 0,
+            json.created_at || 0,
+            json.updated_at || 0,
         );
     }
 
@@ -2798,6 +2807,9 @@ Inbound.AmneziawgSettings.AwgPeer = class extends XrayCommonClass {
             subId: this.subId,
             tgId: this.tgId,
             limitIp: this.limitIp,
+            _awgId: this._awgId,
+            created_at: this.created_at,
+            updated_at: this.updated_at,
         };
     }
 };

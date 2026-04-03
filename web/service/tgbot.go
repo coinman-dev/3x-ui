@@ -111,6 +111,7 @@ type Tgbot struct {
 	settingService SettingService
 	serverService  ServerService
 	xrayService    XrayService
+	awgService     AwgService
 	lastStatus     *Status
 }
 
@@ -2712,6 +2713,9 @@ func (t *Tgbot) prepareServerUsageInfo() string {
 		t.setCachedStatus(t.lastStatus)
 	}
 	onlines := p.GetOnlineClients()
+	// Include AWG online clients
+	awgOnlines := t.awgService.GetOnlineClients()
+	onlines = append(onlines, awgOnlines...)
 
 	info += t.I18nBot("tgbot.messages.hostname", "Hostname=="+hostname)
 	info += t.I18nBot("tgbot.messages.version", "Version=="+config.GetVersion())
@@ -3485,6 +3489,37 @@ func (t *Tgbot) getExhausted(chatId int64) {
 	output += t.I18nBot("tgbot.messages.disabled", "Disabled=="+strconv.Itoa(len(disabledClients)))
 	output += t.I18nBot("tgbot.messages.depleteSoon", "Deplete=="+strconv.Itoa(exhaustedCC))
 
+	// AWG clients exhaustion check
+	awgClients, awgErr := t.awgService.GetClients()
+	if awgErr == nil {
+		for _, c := range awgClients {
+			if c.Enable {
+				if (c.ExpiryTime > 0 && (c.ExpiryTime-now < exDiff)) ||
+					(c.TotalGB > 0 && (c.TotalGB-(c.Upload+c.Download) < trDiff)) {
+					exhaustedClients = append(exhaustedClients, xray.ClientTraffic{
+						Email:      c.Email,
+						Enable:     c.Enable,
+						Up:         c.Upload,
+						Down:       c.Download,
+						Total:      c.TotalGB,
+						ExpiryTime: c.ExpiryTime,
+					})
+				}
+			} else {
+				disabledClients = append(disabledClients, xray.ClientTraffic{
+					Email:  c.Email,
+					Enable: c.Enable,
+				})
+			}
+		}
+		// Recalculate after adding AWG clients
+		exhaustedCC = len(exhaustedClients)
+		output = ""
+		output += t.I18nBot("tgbot.messages.exhaustedCount", "Type=="+t.I18nBot("tgbot.clients"))
+		output += t.I18nBot("tgbot.messages.disabled", "Disabled=="+strconv.Itoa(len(disabledClients)))
+		output += t.I18nBot("tgbot.messages.depleteSoon", "Deplete=="+strconv.Itoa(exhaustedCC))
+	}
+
 	if exhaustedCC > 0 {
 		output += t.I18nBot("tgbot.messages.depleteSoon", "Deplete=="+t.I18nBot("tgbot.clients"))
 		var buttons []telego.InlineKeyboardButton
@@ -3576,6 +3611,34 @@ func (t *Tgbot) notifyExhausted() {
 					}
 				}
 			}
+		}
+	}
+
+	// AWG client notifications
+	awgClients, awgErr := t.awgService.GetClients()
+	if awgErr == nil {
+		for _, c := range awgClients {
+			if c.TgId == 0 || int64Contains(chatIDsDone, c.TgId) || checkAdmin(c.TgId) {
+				continue
+			}
+			if c.Enable {
+				isExhausted := (c.ExpiryTime > 0 && (c.ExpiryTime-now < exDiff)) ||
+					(c.TotalGB > 0 && (c.TotalGB-(c.Upload+c.Download) < trDiff))
+				if isExhausted {
+					output := t.I18nBot("tgbot.messages.exhaustedCount", "Type==AWG "+t.I18nBot("tgbot.clients"))
+					traffic := xray.ClientTraffic{
+						Email:      c.Email,
+						Enable:     c.Enable,
+						Up:         c.Upload,
+						Down:       c.Download,
+						Total:      c.TotalGB,
+						ExpiryTime: c.ExpiryTime,
+					}
+					output += t.clientInfoMsg(&traffic, true, false, false, true, true, false)
+					t.SendMsgToTgbot(c.TgId, output)
+				}
+			}
+			chatIDsDone = append(chatIDsDone, c.TgId)
 		}
 	}
 }

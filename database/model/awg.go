@@ -47,6 +47,9 @@ type AwgServer struct {
 	// Endpoint that clients connect to (server public IP/domain)
 	Endpoint string `json:"endpoint"`
 
+	// Periodic traffic reset: never, daily, weekly, monthly
+	TrafficReset string `json:"trafficReset" gorm:"default:'never'"`
+
 	CreatedAt int64 `json:"createdAt" gorm:"autoCreateTime:milli"`
 	UpdatedAt int64 `json:"updatedAt" gorm:"autoUpdateTime:milli"`
 }
@@ -85,6 +88,12 @@ type AwgClient struct {
 	AllTime  int64 `json:"allTime" gorm:"default:0"`
 
 	ExpiryTime int64 `json:"expiryTime" gorm:"default:0"` // 0 = never
+	Reset      int   `json:"reset" gorm:"default:0"`      // auto-renew interval in days, 0 = disabled
+
+	LimitIp    int    `json:"limitIp" gorm:"default:0"`    // max simultaneous IPs, 0 = unlimited
+	TgId       int64  `json:"tgId" gorm:"default:0"`       // Telegram chat ID for notifications
+	LastOnline int64  `json:"lastOnline" gorm:"default:0"` // last handshake timestamp (ms)
+	LastIP     string `json:"lastIp" gorm:"default:''"`    // last known endpoint IP
 
 	CreatedAt int64 `json:"createdAt" gorm:"autoCreateTime:milli"`
 	UpdatedAt int64 `json:"updatedAt" gorm:"autoUpdateTime:milli"`

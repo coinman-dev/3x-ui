@@ -57,30 +57,30 @@
     border-radius: 1rem;
     overflow-x: hidden;
   }
-  
+
   /* QR code transition effects */
   .qr-cv {
     transition: all 0.3s ease-in-out;
   }
-  
+
   .qr-transition-enter-active, .qr-transition-leave-active {
     transition: opacity 0.3s, transform 0.3s;
   }
-  
+
   .qr-transition-enter, .qr-transition-leave-to {
     opacity: 0;
     transform: scale(0.9);
   }
-  
+
   .qr-transition-enter-to, .qr-transition-leave {
     opacity: 1;
     transform: scale(1);
   }
-  
+
   .qr-flash {
     animation: qr-flash-animation 0.6s;
   }
-  
+
   @keyframes qr-flash-animation {
     0% {
       opacity: 1;
@@ -114,7 +114,23 @@
       this.qrcodes = [];
       // Reset the status fetched flag when showing the modal
       if (qrModalApp) qrModalApp.statusFetched = false;
-      if (this.inbound.protocol == Protocols.WIREGUARD) {
+      if (this.inbound.protocol == Protocols.AMNEZIAWG) {
+        const awgId = client ? client._awgId : null;
+        if (awgId) {
+          HttpUtil.get(`panel/api/awg/client/${awgId}/config`).then(msg => {
+            if (msg.success) {
+              this.qrcodes.push({
+                remark: client.email || 'AWG Client',
+                link: msg.obj,
+                useIPv4: false,
+                originalLink: msg.obj,
+              });
+              this.visible = true;
+            }
+          });
+          return;
+        }
+      } else if (this.inbound.protocol == Protocols.WIREGUARD) {
         this.inbound.genInboundLinks(dbInbound.remark).split('\r\n').forEach((l, index) => {
           this.qrcodes.push({
             remark: "Peer " + (index + 1),
@@ -159,7 +175,7 @@
           console.error("Failed to get status:", e);
         }
       },
-      
+
       toggleIPv4(index) {
         const row = qrModal.qrcodes[index];
         row.useIPv4 = !row.useIPv4;
@@ -170,14 +186,14 @@
         if (!this.serverStatus || !this.serverStatus.publicIP) {
           return;
         }
-        
+
         if (row.useIPv4 && this.serverStatus.publicIP.ipv4) {
           // Replace the hostname or IP in the link with the IPv4 address
           const originalLink = row.originalLink;
           const url = new URL(originalLink);
           const ipv4 = this.serverStatus.publicIP.ipv4;
-          
-          if (qrModal.inbound.protocol == Protocols.WIREGUARD) {
+
+          if (qrModal.inbound.protocol == Protocols.WIREGUARD || qrModal.inbound.protocol == Protocols.AMNEZIAWG) {
             // Special handling for WireGuard config
             const endpointRegex = /Endpoint = ([^:]+):(\d+)/;
             const match = originalLink.match(endpointRegex);
@@ -196,19 +212,19 @@
           // Restore original link
           row.link = row.originalLink;
         }
-        
+
         // Update QR code with transition effect
         const canvasElement = document.querySelector('#qrCode-' + index);
         if (canvasElement) {
           // Add flash animation class
           canvasElement.classList.add('qr-flash');
-          
+
           // Remove the class after animation completes
           setTimeout(() => {
             canvasElement.classList.remove('qr-flash');
           }, 600);
         }
-        
+
         this.setQrCode("qrCode-" + index, row.link);
       },
       copy(content) {
@@ -221,7 +237,7 @@
       setQrCode(elementId, content) {
         new QRious({
           element: document.querySelector('#' + elementId),
-          size: 400,
+          size: 600,
           value: content,
           background: 'white',
           backgroundAlpha: 0,

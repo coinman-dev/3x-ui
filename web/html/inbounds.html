@@ -779,10 +779,10 @@
                 comment: c.comment || c.name || '',
                 totalGB: c.totalGB || 0,
                 expiryTime: c.expiryTime || 0,
-                reset: 0,
+                reset: c.reset || 0,
                 subId: '',
-                tgId: 0,
-                limitIp: 0,
+                tgId: c.tgId || 0,
+                limitIp: c.limitIp || 0,
                 _awgId: c.id,
                 created_at: c.createdAt || 0,
                 updated_at: c.updatedAt || 0,
@@ -796,9 +796,21 @@
                 email: c.email,
                 up: c.upload || 0,
                 down: c.download || 0,
-                total: (c.totalGB || 0) * 1073741824,
+                total: c.totalGB || 0,
                 expiryTime: c.expiryTime || 0,
               }));
+              // Add AWG online clients and last online to global maps
+              const now = Date.now();
+              for (const c of awgMsg.obj) {
+                if (c.lastOnline && (now - c.lastOnline) < 180000) {
+                  if (!this.onlineClients.includes(c.email)) {
+                    this.onlineClients.push(c.email);
+                  }
+                }
+                if (c.lastOnline > 0) {
+                  this.lastOnlineMap[c.email] = c.lastOnline;
+                }
+              }
             }
           } catch (e) {
             console.error('Failed to fetch AWG clients:', e);
@@ -1119,6 +1131,20 @@
         }
         data.sniffing = inbound.sniffing.toString();
 
+        if (inbound.protocol === Protocols.AMNEZIAWG) {
+          const firstClient = inbound.settings.clients && inbound.settings.clients[0];
+          if (firstClient && firstClient.email) {
+            inModal.loading();
+            const msg = await HttpUtil.postJson('/panel/api/inbounds/add', data);
+            if (msg.success) {
+              await this.addAwgClient(firstClient, inModal);
+            } else {
+              inModal.loading(false);
+            }
+            return;
+          }
+        }
+
         await this.submit('/panel/api/inbounds/add', data, inModal);
       },
       async updateInbound(inbound, dbInbound) {
@@ -1228,17 +1254,24 @@
       },
       async addAwgClient(clients, modal) {
         modal.loading();
-        const client = clients;
-        const data = {
-          email: client.email,
-          name: client.comment || client.email,
-          comment: client.comment || '',
-          enable: client.enable,
-          totalGB: client._totalGB || 0,
-          expiryTime: client.expiryTime || 0,
-        };
-        const msg = await HttpUtil.postJson('/panel/api/awg/client/add', data);
-        if (msg.success) {
+        const clientList = Array.isArray(clients) ? clients : [clients];
+        let success = true;
+        for (const client of clientList) {
+          const data = {
+            email: client.email,
+            name: client.comment || client.email,
+            comment: client.comment || '',
+            enable: client.enable,
+            totalGB: client._totalGB || 0,
+            expiryTime: client.expiryTime || 0,
+            reset: client.reset || 0,
+            limitIp: client.limitIp || 0,
+            tgId: client.tgId || 0,
+          };
+          const msg = await HttpUtil.postJson('/panel/api/awg/client/add', data);
+          if (!msg.success) { success = false; break; }
+        }
+        if (success) {
           modal.close();
           await this.getDBInbounds();
         } else {
@@ -1260,6 +1293,9 @@
           enable: client.enable,
           totalGB: client._totalGB || 0,
           expiryTime: client.expiryTime || 0,
+          reset: client.reset || 0,
+          limitIp: client.limitIp || 0,
+          tgId: client.tgId || 0,
         };
         const msg = await HttpUtil.postJson(`/panel/api/awg/client/update/${awgClient.id}`, data);
         if (msg.success) {

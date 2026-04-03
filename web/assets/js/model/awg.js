@@ -27,6 +27,7 @@ class AwgServer {
         this.postUp = data.postUp || '';
         this.postDown = data.postDown || '';
         this.endpoint = data.endpoint || '';
+        this.trafficReset = data.trafficReset || 'never';
     }
 }
 
@@ -51,6 +52,11 @@ class AwgClient {
         this.totalGB = data.totalGB || 0;
         this.allTime = data.allTime || 0;
         this.expiryTime = data.expiryTime || 0;
+        this.reset = data.reset || 0;
+        this.limitIp = data.limitIp || 0;
+        this.tgId = data.tgId || 0;
+        this.lastOnline = data.lastOnline || 0;
+        this.lastIp = data.lastIp || '';
         this.createdAt = data.createdAt || 0;
         this.updatedAt = data.updatedAt || 0;
     }

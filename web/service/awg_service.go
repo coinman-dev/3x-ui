@@ -2,7 +2,10 @@ package service
 
 import (
 	"fmt"
+	"strings"
 	"time"
+
+	"gorm.io/gorm"
 
 	"github.com/mhsanaei/3x-ui/v2/awg"
 	"github.com/mhsanaei/3x-ui/v2/database"
@@ -90,6 +93,17 @@ func (s *AwgService) GetServerStatus() *AwgStatus {
 		AwgInstalled: awg.IsAwgInstalled(),
 		AwgVersion:   awg.GetAwgVersion(),
 	}
+}
+
+// GetOnlineClients returns emails of AWG clients online within the last 3 minutes.
+func (s *AwgService) GetOnlineClients() []string {
+	db := database.GetDB()
+	threshold := time.Now().Add(-3 * time.Minute).UnixMilli()
+	var emails []string
+	db.Model(&model.AwgClient{}).
+		Where("enable = ? AND last_online > ?", true, threshold).
+		Pluck("email", &emails)
+	return emails
 }
 
 // --- Clients ---
@@ -243,6 +257,35 @@ func (s *AwgService) DeleteClient(id int) error {
 	return nil
 }
 
+// DeleteAllClients stops the AWG interface and removes all clients and the server record.
+func (s *AwgService) DeleteAllClients() error {
+	server, err := s.GetServer()
+	if err != nil {
+		// No server record — nothing to clean up
+		return nil
+	}
+
+	// Bring down the interface if it's running
+	if server.Enable {
+		awg.StopNdppd()
+		_ = awg.InterfaceDown(server.InterfaceName)
+	}
+
+	db := database.GetDB()
+
+	// Delete all AWG clients
+	if err := db.Where("server_id = ?", server.Id).Delete(&model.AwgClient{}).Error; err != nil {
+		return err
+	}
+
+	// Delete the AWG server record so re-creation starts fresh
+	if err := db.Delete(&model.AwgServer{}, server.Id).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // ToggleClient enables or disables a client.
 func (s *AwgService) ToggleClient(id int, enable bool) error {
 	client, err := s.GetClient(id)
@@ -275,7 +318,7 @@ func (s *AwgService) ResetClientTraffic(id int) error {
 	}).Error
 }
 
-// UpdateTrafficStats reads live peer stats and updates the database.
+// UpdateTrafficStats reads live peer stats, updates the database, and enforces limits.
 func (s *AwgService) UpdateTrafficStats() {
 	server, err := s.GetServer()
 	if err != nil || !server.Enable {
@@ -313,8 +356,9 @@ func (s *AwgService) UpdateTrafficStats() {
 		newUp := peer.TransferTx // from server perspective: TX to peer = client's upload perspective is reversed
 		newDown := peer.TransferRx
 
-		// Update only if there's actual traffic change
-		// awg show returns cumulative stats, so we store the raw values
+		updates := map[string]any{}
+
+		// Update traffic if changed
 		if newUp != client.Upload || newDown != client.Download {
 			allTimeDelta := int64(0)
 			if newUp > client.Upload {
@@ -324,13 +368,172 @@ func (s *AwgService) UpdateTrafficStats() {
 				allTimeDelta += newDown - client.Download
 			}
 
-			db.Model(client).Updates(map[string]any{
-				"upload":   newUp,
-				"download": newDown,
-				"all_time": client.AllTime + allTimeDelta,
-			})
+			updates["upload"] = newUp
+			updates["download"] = newDown
+			updates["all_time"] = client.AllTime + allTimeDelta
+		}
+
+		// Update last online from handshake timestamp (seconds → milliseconds)
+		if peer.LatestHandshake > 0 {
+			handshakeMs := peer.LatestHandshake * 1000
+			if handshakeMs != client.LastOnline {
+				updates["last_online"] = handshakeMs
+			}
+		}
+
+		// Update last known endpoint IP
+		if peer.Endpoint != "" && peer.Endpoint != "(none)" {
+			// Strip port from endpoint (e.g. "1.2.3.4:51820" → "1.2.3.4")
+			ep := peer.Endpoint
+			if idx := strings.LastIndex(ep, ":"); idx > 0 {
+				ep = ep[:idx]
+			}
+			// Strip brackets from IPv6 (e.g. "[::1]" → "::1")
+			ep = strings.TrimPrefix(strings.TrimSuffix(ep, "]"), "[")
+			if ep != client.LastIP {
+				updates["last_ip"] = ep
+			}
+		}
+
+		if len(updates) > 0 {
+			db.Model(client).Updates(updates)
 		}
 	}
+
+	// Auto-renew, activate delayed-start, and enforce limits
+	needReconfig := s.autoRenewClients(db)
+	if s.adjustDelayedStart(db) {
+		needReconfig = true
+	}
+	if s.disableInvalidClients(db) {
+		needReconfig = true
+	}
+
+	if needReconfig {
+		if err := s.applyServerConfig(server); err != nil {
+			logger.Warning("Failed to apply AWG config after enforcement:", err)
+		}
+	}
+}
+
+// autoRenewClients extends expiry for clients with reset > 0 whose expiry has passed.
+// Resets their traffic and re-enables them if needed.
+// Returns true if any clients were re-enabled (config reapply needed).
+func (s *AwgService) autoRenewClients(db *gorm.DB) bool {
+	now := time.Now().UnixMilli()
+	var clients []model.AwgClient
+
+	if err := db.Where("reset > 0 AND expiry_time > 0 AND expiry_time <= ?", now).Find(&clients).Error; err != nil {
+		logger.Warning("AWG autoRenewClients error:", err)
+		return false
+	}
+
+	if len(clients) == 0 {
+		return false
+	}
+
+	needReconfig := false
+	for _, c := range clients {
+		newExpiry := c.ExpiryTime
+		for newExpiry <= now {
+			newExpiry += int64(c.Reset) * 86400000
+		}
+
+		updates := map[string]any{
+			"expiry_time": newExpiry,
+			"upload":      0,
+			"download":    0,
+		}
+		if !c.Enable {
+			updates["enable"] = true
+			needReconfig = true
+		}
+
+		db.Model(&model.AwgClient{}).Where("id = ?", c.Id).Updates(updates)
+		logger.Infof("AWG: client '%s' auto-renewed, new expiry: %v", c.Email, time.UnixMilli(newExpiry))
+	}
+
+	return needReconfig
+}
+
+// disableInvalidClients disables AWG clients that exceeded traffic quota or expired.
+// Returns true if any clients were disabled (config reapply needed).
+func (s *AwgService) disableInvalidClients(db *gorm.DB) bool {
+	now := time.Now().UnixMilli()
+
+	result := db.Model(&model.AwgClient{}).
+		Where("enable = ? AND ((total_gb > 0 AND upload + download >= total_gb) OR (expiry_time > 0 AND expiry_time <= ?))", true, now).
+		Update("enable", false)
+
+	if result.Error != nil {
+		logger.Warning("AWG disableInvalidClients error:", result.Error)
+		return false
+	}
+	if result.RowsAffected > 0 {
+		logger.Infof("AWG: %d client(s) disabled (quota/expiry)", result.RowsAffected)
+	}
+	return result.RowsAffected > 0
+}
+
+// adjustDelayedStart converts negative expiryTime (delayed start in days) to an absolute
+// timestamp when the client first generates traffic.
+// Returns true if any clients were updated (config reapply needed).
+func (s *AwgService) adjustDelayedStart(db *gorm.DB) bool {
+	now := time.Now().UnixMilli()
+	var clients []model.AwgClient
+
+	// Find enabled clients with negative expiryTime (delayed start) that have traffic
+	if err := db.Where("enable = ? AND expiry_time < 0 AND (upload > 0 OR download > 0)", true).Find(&clients).Error; err != nil {
+		logger.Warning("AWG adjustDelayedStart error:", err)
+		return false
+	}
+
+	if len(clients) == 0 {
+		return false
+	}
+
+	for _, c := range clients {
+		// Convert negative days to absolute expiry: now + abs(expiryTime)
+		// expiryTime is stored as -86400000 * days (negative milliseconds)
+		newExpiry := now + (-c.ExpiryTime)
+		db.Model(&model.AwgClient{}).Where("id = ?", c.Id).Update("expiry_time", newExpiry)
+		logger.Infof("AWG: client '%s' delayed start activated, expires at %v", c.Email, time.UnixMilli(newExpiry))
+	}
+
+	return false // no reconfig needed, just updated expiry times
+}
+
+// ResetAllClientTraffics resets upload/download counters for all AWG clients
+// and re-enables clients that were disabled due to traffic quota (not expiry).
+func (s *AwgService) ResetAllClientTraffics() error {
+	db := database.GetDB()
+	now := time.Now().UnixMilli()
+
+	// Re-enable clients disabled by traffic quota (but not by expiry)
+	db.Model(&model.AwgClient{}).
+		Where("enable = ? AND total_gb > 0 AND (expiry_time = 0 OR expiry_time > ?)", false, now).
+		Update("enable", true)
+
+	// Reset traffic counters for all clients
+	err := db.Model(&model.AwgClient{}).Updates(map[string]any{
+		"upload":   0,
+		"download": 0,
+	}).Error
+	if err != nil {
+		return err
+	}
+
+	// Reapply config to add re-enabled peers back
+	server, sErr := s.GetServer()
+	if sErr != nil {
+		return sErr
+	}
+	if server.Enable {
+		if err := s.applyServerConfig(server); err != nil {
+			logger.Warning("Failed to apply AWG config after traffic reset:", err)
+		}
+	}
+	return nil
 }
 
 // applyServerConfig regenerates the config file and applies it.

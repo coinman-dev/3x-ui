@@ -1,7 +1,7 @@
 name: Cleanup Caches
 on:
   schedule:
-    - cron: '0 3 * * 0'   # every Sunday
+    - cron: '0 3 * * *'   # every day at 03:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -16,10 +16,10 @@ jobs:
         run: |
           CUTOFF_DATE=$(date -d "3 days ago" -Ins --utc | sed 's/+0000/Z/')
           echo "Deleting caches older than: $CUTOFF_DATE"
-          
+
           CACHE_IDS=$(gh api --paginate repos/${{ github.repository }}/actions/caches \
             --jq ".actions_caches[] | select(.last_accessed_at < \"$CUTOFF_DATE\") | .id" 2>/dev/null)
-          
+
           if [ -z "$CACHE_IDS" ]; then
             echo "No old caches found to delete."
           else
@@ -28,4 +28,24 @@ jobs:
               gh api -X DELETE repos/${{ github.repository }}/actions/caches/$CACHE_ID
             done
             echo "Old caches deleted successfully."
+          fi
+
+      - name: Delete artifacts older than 2 days
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CUTOFF_DATE=$(date -d "2 days ago" -Ins --utc | sed 's/+0000/Z/')
+          echo "Deleting artifacts older than: $CUTOFF_DATE"
+
+          ARTIFACT_IDS=$(gh api --paginate repos/${{ github.repository }}/actions/artifacts \
+            --jq ".artifacts[] | select(.created_at < \"$CUTOFF_DATE\") | .id" 2>/dev/null)
+
+          if [ -z "$ARTIFACT_IDS" ]; then
+            echo "No old artifacts found to delete."
+          else
+            echo "$ARTIFACT_IDS" | while read ARTIFACT_ID; do
+              echo "Deleting artifact: $ARTIFACT_ID"
+              gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID
+            done
+            echo "Old artifacts deleted successfully."
           fi

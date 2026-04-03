@@ -132,6 +132,18 @@ func GenerateClientConfig(server *model.AwgServer, client *model.AwgClient) stri
 	return b.String()
 }
 
+// ipv6Iface returns the external interface for IPv6 operations,
+// falling back to the IPv4 external interface if not set separately.
+func ipv6Iface(server *model.AwgServer) string {
+	if server.IPv6ExternalInterface != "" {
+		return server.IPv6ExternalInterface
+	}
+	if server.ExternalInterface != "" {
+		return server.ExternalInterface
+	}
+	return "eth0"
+}
+
 // GenerateDefaultPostUp creates default iptables rules for the server.
 func GenerateDefaultPostUp(server *model.AwgServer) string {
 	iface := server.ExternalInterface
@@ -150,10 +162,12 @@ func GenerateDefaultPostUp(server *model.AwgServer) string {
 	}
 
 	if server.IPv6Enabled {
+		iface6 := ipv6Iface(server)
 		// No NAT66 — direct routing with forwarding
 		parts = append(parts,
 			fmt.Sprintf("ip6tables -A FORWARD -i %s -j ACCEPT", name),
 			fmt.Sprintf("ip6tables -A FORWARD -o %s -j ACCEPT", name),
+			fmt.Sprintf("ip6tables -A FORWARD -i %s -o %s -j ACCEPT", iface6, name),
 			"sysctl -w net.ipv6.conf.all.forwarding=1",
 		)
 	}
@@ -180,9 +194,11 @@ func GenerateDefaultPostDown(server *model.AwgServer) string {
 	}
 
 	if server.IPv6Enabled {
+		iface6 := ipv6Iface(server)
 		parts = append(parts,
 			fmt.Sprintf("ip6tables -D FORWARD -i %s -j ACCEPT", name),
 			fmt.Sprintf("ip6tables -D FORWARD -o %s -j ACCEPT", name),
+			fmt.Sprintf("ip6tables -D FORWARD -i %s -o %s -j ACCEPT", iface6, name),
 		)
 	}
 

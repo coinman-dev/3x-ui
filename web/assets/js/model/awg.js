@@ -24,6 +24,7 @@ class AwgServer {
         this.h4 = data.h4 !== undefined ? data.h4 : 4;
         this.dns = data.dns || '1.1.1.1,2606:4700:4700::1111';
         this.externalInterface = data.externalInterface || 'eth0';
+        this.ipv6ExternalInterface = data.ipv6ExternalInterface || undefined;
         this.postUp = data.postUp || '';
         this.postDown = data.postDown || '';
         this.endpoint = data.endpoint || '';

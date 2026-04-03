@@ -37,8 +37,11 @@ type AwgServer struct {
 	// DNS pushed to clients
 	DNS string `json:"dns" gorm:"default:'1.1.1.1,2606:4700:4700::1111'"`
 
-	// External interface for NAT / NDP proxy
+	// External interface for NAT (IPv4)
 	ExternalInterface string `json:"externalInterface" gorm:"default:'eth0'"`
+
+	// External interface for NDP proxy / IPv6 forwarding (may differ from IPv4)
+	IPv6ExternalInterface string `json:"ipv6ExternalInterface" gorm:"default:''"`
 
 	// PostUp / PostDown scripts (auto-generated but overridable)
 	PostUp   string `json:"postUp"`

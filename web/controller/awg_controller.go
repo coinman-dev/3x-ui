@@ -24,6 +24,7 @@ func (a *AwgController) initRouter(g *gin.RouterGroup) {
 	g.POST("/server", a.saveServer)
 	g.POST("/server/toggle", a.toggleServer)
 	g.GET("/server/status", a.getServerStatus)
+	g.GET("/interfaces", a.getInterfaces)
 
 	g.GET("/clients", a.getClients)
 	g.POST("/client/add", a.addClient)
@@ -69,6 +70,11 @@ func (a *AwgController) toggleServer(c *gin.Context) {
 func (a *AwgController) getServerStatus(c *gin.Context) {
 	status := a.awgService.GetServerStatus()
 	jsonObj(c, status, nil)
+}
+
+func (a *AwgController) getInterfaces(c *gin.Context) {
+	ifaces := a.awgService.GetNetworkInterfaces()
+	jsonObj(c, ifaces, nil)
 }
 
 func (a *AwgController) getClients(c *gin.Context) {

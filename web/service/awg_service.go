@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -93,6 +94,62 @@ func (s *AwgService) GetServerStatus() *AwgStatus {
 		AwgInstalled: awg.IsAwgInstalled(),
 		AwgVersion:   awg.GetAwgVersion(),
 	}
+}
+
+// NetworkInterface describes a system network interface with its IP capabilities.
+type NetworkInterface struct {
+	Name string `json:"name"`
+	IPv4 bool   `json:"ipv4"`
+	IPv6 bool   `json:"ipv6"`
+}
+
+// GetNetworkInterfaces returns non-loopback, non-tunnel UP interfaces with IP version info.
+func (s *AwgService) GetNetworkInterfaces() []NetworkInterface {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		logger.Warning("Failed to list network interfaces:", err)
+		return nil
+	}
+
+	var result []NetworkInterface
+	for _, iface := range ifaces {
+		// Skip loopback, down, and AWG/WG tunnel interfaces
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		if strings.HasPrefix(iface.Name, "awg") || strings.HasPrefix(iface.Name, "wg") {
+			continue
+		}
+
+		addrs, err := iface.Addrs()
+		if err != nil || len(addrs) == 0 {
+			continue
+		}
+
+		ni := NetworkInterface{Name: iface.Name}
+		for _, addr := range addrs {
+			ipNet, ok := addr.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip := ipNet.IP
+			if ip.IsLinkLocalUnicast() {
+				continue // skip fe80:: and 169.254.x.x
+			}
+			if ip.To4() != nil {
+				ni.IPv4 = true
+			} else {
+				ni.IPv6 = true
+			}
+		}
+		if ni.IPv4 || ni.IPv6 {
+			result = append(result, ni)
+		}
+	}
+	return result
 }
 
 // GetOnlineClients returns emails of AWG clients online within the last 3 minutes.
@@ -241,7 +298,7 @@ func (s *AwgService) DeleteClient(id int) error {
 
 	// Remove NDP proxy entry
 	if server.IPv6Enabled && client.IPv6Address != "" {
-		_ = awg.RemoveProxyNDP(client.IPv6Address, server.ExternalInterface)
+		_ = awg.RemoveProxyNDP(client.IPv6Address, s.ipv6Iface(server))
 	}
 
 	db := database.GetDB()
@@ -551,8 +608,9 @@ func (s *AwgService) applyServerConfig(server *model.AwgServer) error {
 
 	// Apply NDP proxy for IPv6
 	if server.IPv6Enabled && server.IPv6Pool != "" {
+		iface6 := s.ipv6Iface(server)
 		if awg.IsNdppdInstalled() {
-			if err := awg.ApplyNdppdConfig(server.ExternalInterface, server.InterfaceName, server.IPv6Pool); err != nil {
+			if err := awg.ApplyNdppdConfig(iface6, server.InterfaceName, server.IPv6Pool); err != nil {
 				logger.Warning("Failed to apply ndppd config:", err)
 				// Fallback to per-client NDP proxy
 				s.applyManualNDP(server, clients)
@@ -569,11 +627,23 @@ func (s *AwgService) applyServerConfig(server *model.AwgServer) error {
 	return awg.InterfaceUp(server.InterfaceName)
 }
 
+// ipv6Iface returns the external interface for IPv6, falling back to the IPv4 one.
+func (s *AwgService) ipv6Iface(server *model.AwgServer) string {
+	if server.IPv6ExternalInterface != "" {
+		return server.IPv6ExternalInterface
+	}
+	if server.ExternalInterface != "" {
+		return server.ExternalInterface
+	}
+	return "eth0"
+}
+
 // applyManualNDP adds per-client NDP proxy entries.
 func (s *AwgService) applyManualNDP(server *model.AwgServer, clients []model.AwgClient) {
+	iface6 := s.ipv6Iface(server)
 	for _, c := range clients {
 		if c.Enable && c.IPv6Address != "" {
-			if err := awg.AddProxyNDP(c.IPv6Address, server.ExternalInterface); err != nil {
+			if err := awg.AddProxyNDP(c.IPv6Address, iface6); err != nil {
 				logger.Warning("Failed to add NDP proxy for", c.IPv6Address, ":", err)
 			}
 		}

@@ -1118,13 +1118,17 @@ print(str(first) + '/' + str(net.prefixlen))
 
     local now_ms=$(date +%s%3N 2>/dev/null || echo "$(date +%s)000")
 
+    # Delete any default row the panel may have auto-created at startup,
+    # then insert the properly configured one.
+    sqlite3 "$db_path" "DELETE FROM awg_servers;" 2>/dev/null
     sqlite3 "$db_path" "INSERT INTO awg_servers (
         enable, interface_name, listen_port, mtu,
         private_key, public_key,
         ipv4_address, ipv4_pool,
         ipv6_enabled, ipv6_address, ipv6_pool, ipv6_gateway,
         jc, jmin, jmax, s1, s2, h1, h2, h3, h4,
-        dns, external_interface, post_up, post_down, endpoint,
+        dns, external_interface, ipv6_external_interface,
+        post_up, post_down, endpoint,
         created_at, updated_at
     ) VALUES (
         0, 'awg0', ${awg_port}, 1420,
@@ -1132,7 +1136,8 @@ print(str(first) + '/' + str(net.prefixlen))
         '10.66.66.1/24', '10.66.66.0/24',
         ${ipv6_enabled}, '${awg_server_ipv6:-}', '${ipv6_prefix:-}', '${ipv6_gateway:-}',
         4, 50, 1000, 0, 0, 1, 2, 3, 4,
-        '1.1.1.1,2606:4700:4700::1111', '${ext_iface}', '${post_up}', '${post_down}', '${endpoint}',
+        '1.1.1.1,2606:4700:4700::1111', '${ipv4_iface}', '${ipv6_iface}',
+        '${post_up}', '${post_down}', '${endpoint}',
         ${now_ms}, ${now_ms}
     );" 2>/dev/null
 

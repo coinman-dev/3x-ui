@@ -95,31 +95,52 @@
                       </a-form-item>
                     </a-col>
                     <a-col :sm="24" :md="8">
-                      <a-form-item label="External Interface">
-                        <a-input v-model="server.externalInterface" placeholder="eth0" />
+                      <a-form-item label="External Interface:">
+                        <a-select v-model="server.externalInterface"
+                          style="width: 100%"
+                          placeholder="eth0"
+                          :not-found-content="'No interfaces found'">
+                          <a-select-option v-for="iface in ipv4Interfaces" :key="iface.name" :value="iface.name">
+                            [[ iface.name ]]
+                          </a-select-option>
+                        </a-select>
                       </a-form-item>
                     </a-col>
                   </a-row>
                   <a-divider>IPv6 (Native Public Addresses)</a-divider>
                   <a-row :gutter="16">
-                    <a-col :sm="24" :md="6">
-                      <a-form-item label="Enable IPv6">
+                    <a-col :sm="24" :md="4">
+                      <a-form-item label="Enable IPv6:">
                         <a-switch v-model="server.ipv6Enabled" checked-children="ON" un-checked-children="OFF" />
                       </a-form-item>
                     </a-col>
-                    <a-col :sm="24" :md="6">
-                      <a-form-item label="IPv6 Server Address">
+                    <a-col :sm="24" :md="5">
+                      <a-form-item label="IPv6 Server Address:">
                         <a-input v-model="server.ipv6Address" placeholder="2a01:xxx::1/112" :disabled="!server.ipv6Enabled" />
                       </a-form-item>
                     </a-col>
-                    <a-col :sm="24" :md="6">
-                      <a-form-item label="IPv6 Pool">
+                    <a-col :sm="24" :md="5">
+                      <a-form-item label="IPv6 Pool:">
                         <a-input v-model="server.ipv6Pool" placeholder="2a01:xxx::/112" :disabled="!server.ipv6Enabled" />
                       </a-form-item>
                     </a-col>
-                    <a-col :sm="24" :md="6">
-                      <a-form-item label="IPv6 Gateway">
+                    <a-col :sm="24" :md="5">
+                      <a-form-item label="IPv6 Gateway:">
                         <a-input v-model="server.ipv6Gateway" placeholder="fe80::1" :disabled="!server.ipv6Enabled" />
+                      </a-form-item>
+                    </a-col>
+                    <a-col :sm="24" :md="5">
+                      <a-form-item label="External Interface:">
+                        <a-select v-model="server.ipv6ExternalInterface"
+                          style="width: 100%"
+                          :placeholder="'Same as IPv4 (' + (server.externalInterface || 'eth0') + ')'"
+                          allow-clear
+                          :disabled="!server.ipv6Enabled"
+                          :not-found-content="'No interfaces found'">
+                          <a-select-option v-for="iface in ipv6Interfaces" :key="iface.name" :value="iface.name">
+                            [[ iface.name ]]
+                          </a-select-option>
+                        </a-select>
                       </a-form-item>
                     </a-col>
                   </a-row>
@@ -233,6 +254,7 @@
       toggling: false,
       activePanel: ['network'],
       server: new AwgServer(),
+      networkInterfaces: [],
       status: {
         running: false,
         awgInstalled: false,
@@ -242,12 +264,21 @@
     async created() {
       await this.loadData();
     },
+    computed: {
+      ipv4Interfaces() {
+        return this.networkInterfaces.filter(i => i.ipv4);
+      },
+      ipv6Interfaces() {
+        return this.networkInterfaces.filter(i => i.ipv6);
+      },
+    },
     methods: {
       async loadData() {
         this.loading = true;
         await Promise.all([
           this.loadServer(),
           this.loadStatus(),
+          this.loadInterfaces(),
         ]);
         this.loading = false;
         this.serverLoaded = true;
@@ -262,6 +293,12 @@
         const msg = await HttpUtil.get('panel/api/awg/server/status');
         if (msg.success) {
           this.status = msg.obj;
+        }
+      },
+      async loadInterfaces() {
+        const msg = await HttpUtil.get('panel/api/awg/interfaces');
+        if (msg.success) {
+          this.networkInterfaces = msg.obj || [];
         }
       },
       async saveServer() {

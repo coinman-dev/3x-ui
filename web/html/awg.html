@@ -221,10 +221,13 @@
 
               <div style="margin-top: 16px; display: flex; justify-content: space-between;">
                 <a-popconfirm
-                  title="{{ i18n "pages.awg.resetConfirm" }}"
                   @confirm="resetToDefaults"
                   ok-text="{{ i18n "confirm" }}"
                   cancel-text="{{ i18n "cancel" }}">
+                  <template slot="title">
+                    <p style="margin:0">{{ i18n "pages.awg.resetConfirm1" }}</p>
+                    <p style="margin:4px 0 0">{{ i18n "pages.awg.resetConfirm2" }}</p>
+                  </template>
                   <a-button type="danger" icon="undo" :loading="resetting" ghost>
                     {{ i18n "pages.awg.resetDefaults" }}
                   </a-button>

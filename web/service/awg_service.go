@@ -342,8 +342,8 @@ func (s *AwgService) DeleteAllClients() error {
 		return err
 	}
 
-	// Delete the AWG server record so re-creation starts fresh
-	if err := db.Delete(&model.AwgServer{}, server.Id).Error; err != nil {
+	// Disable the server but keep all settings (IPv6, interfaces, etc.)
+	if err := db.Model(server).Update("enable", false).Error; err != nil {
 		return err
 	}
 

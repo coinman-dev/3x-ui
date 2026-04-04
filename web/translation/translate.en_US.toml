@@ -591,7 +591,7 @@
 
 [pages.awg]
 "resetDefaults" = "Reset to Defaults"
-"resetConfirm" = "This will reset all AWG settings to defaults, regenerate keys, and delete all clients. Continue?"
+"resetConfirm" = "This will regenerate keys, reset obfuscation parameters, delete all clients and the AWG inbound. Network settings (IPv6, endpoint, interfaces) will be preserved. Continue?"
 "resetSuccess" = "AWG settings have been reset to defaults"
 
 [pages.settings.security]

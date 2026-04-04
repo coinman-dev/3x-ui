@@ -67,8 +67,11 @@ func (s *AwgService) SaveServer(server *model.AwgServer) error {
 	return nil
 }
 
-// ResetToDefaults resets all AWG server settings to defaults (as if freshly installed),
-// regenerates keys, detects the correct network interface, and removes all clients.
+// ResetToDefaults resets AWG to the state right after installation:
+// regenerates keys, resets obfuscation/port/MTU to defaults, removes all
+// clients and the AWG inbound, deletes the conf file — but preserves
+// network settings that were configured during install (IPv6, endpoint,
+// external interfaces).
 func (s *AwgService) ResetToDefaults() (*model.AwgServer, error) {
 	server, err := s.GetServer()
 	if err != nil {
@@ -83,10 +86,18 @@ func (s *AwgService) ResetToDefaults() (*model.AwgServer, error) {
 
 	db := database.GetDB()
 
-	// Delete all clients
+	// Delete all AWG clients
 	if err := db.Where("server_id = ?", server.Id).Delete(&model.AwgClient{}).Error; err != nil {
 		return nil, err
 	}
+
+	// Delete AWG inbound(s)
+	if err := db.Where("protocol = ?", model.AmneziaWG).Delete(&model.Inbound{}).Error; err != nil {
+		logger.Warning("Failed to delete AWG inbounds on reset:", err)
+	}
+
+	// Remove config file from disk
+	awg.RemoveServerConfig(server.InterfaceName)
 
 	// Generate new keys
 	priv, pub, err := awg.GenerateKeyPair()
@@ -94,22 +105,21 @@ func (s *AwgService) ResetToDefaults() (*model.AwgServer, error) {
 		return nil, fmt.Errorf("generate server keys: %w", err)
 	}
 
-	// Detect interface
-	detectedIface := awg.DetectDefaultInterface()
+	// Detect interface if not already set
+	if server.ExternalInterface == "" {
+		server.ExternalInterface = awg.DetectDefaultInterface()
+	}
 
-	// Reset to defaults
+	// Reset operational settings to defaults, but keep network config
 	server.Enable = false
-	server.InterfaceName = "awg0"
 	server.ListenPort = 51820
 	server.MTU = 1420
 	server.PrivateKey = priv
 	server.PublicKey = pub
 	server.IPv4Address = "10.66.66.1/24"
 	server.IPv4Pool = "10.66.66.0/24"
-	server.IPv6Enabled = false
-	server.IPv6Address = ""
-	server.IPv6Pool = ""
-	server.IPv6Gateway = ""
+	// Preserve: IPv6Enabled, IPv6Address, IPv6Pool, IPv6Gateway,
+	//           ExternalInterface, IPv6ExternalInterface, Endpoint
 	server.Jc = 4
 	server.Jmin = 50
 	server.Jmax = 1000
@@ -120,11 +130,8 @@ func (s *AwgService) ResetToDefaults() (*model.AwgServer, error) {
 	server.H3 = 3
 	server.H4 = 4
 	server.DNS = "1.1.1.1,2606:4700:4700::1111"
-	server.ExternalInterface = detectedIface
-	server.IPv6ExternalInterface = ""
 	server.PostUp = ""
 	server.PostDown = ""
-	server.Endpoint = ""
 	server.TrafficReset = "never"
 	server.UpdatedAt = time.Now().UnixMilli()
 

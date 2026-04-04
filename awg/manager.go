@@ -44,6 +44,14 @@ func WriteServerConfig(interfaceName string, config string) error {
 	return nil
 }
 
+// RemoveServerConfig deletes the config file for the given interface from disk.
+func RemoveServerConfig(interfaceName string) {
+	path := filepath.Join(DefaultConfigDir, interfaceName+".conf")
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		logger.Warning("Failed to remove AWG config file:", err)
+	}
+}
+
 // InterfaceUp brings the AmneziaWG interface up using awg-quick.
 func InterfaceUp(interfaceName string) error {
 	configPath := filepath.Join(DefaultConfigDir, interfaceName+".conf")

@@ -16,6 +16,19 @@
   .dark .ant-calendar-disabled-cell .ant-calendar-date:hover {
     background: transparent;
   }
+  /* Fix badge text color in dark theme */
+  .dark .ant-badge-status-text {
+    color: rgba(255, 255, 255, 0.85);
+  }
+  /* Fix ghost danger button in dark theme */
+  .dark .ant-btn-danger.ant-btn-background-ghost {
+    color: #ff7875;
+    border-color: #ff7875;
+  }
+  .dark .ant-btn-danger.ant-btn-background-ghost:hover {
+    color: #ff4d4f;
+    border-color: #ff4d4f;
+  }
 </style>
 {{ template "page/head_end" .}}
 
@@ -108,23 +121,25 @@
                     </a-col>
                   </a-row>
                   <a-divider>IPv6 (Native Public Addresses)</a-divider>
-                  <a-row :gutter="16">
-                    <a-col :sm="24" :md="4">
-                      <a-form-item label="Enable IPv6:">
+                  <a-row :gutter="16" style="margin-bottom:8px">
+                    <a-col :span="24">
+                      <a-form-item label="Enable IPv6:" :colon="false" style="margin-bottom:0">
                         <a-switch v-model="server.ipv6Enabled" checked-children="ON" un-checked-children="OFF" />
                       </a-form-item>
                     </a-col>
+                  </a-row>
+                  <a-row :gutter="16">
                     <a-col :sm="24" :md="5">
                       <a-form-item label="IPv6 Server Address:">
                         <a-input v-model="server.ipv6Address" placeholder="2a01:xxx::1/112" :disabled="!server.ipv6Enabled" />
                       </a-form-item>
                     </a-col>
-                    <a-col :sm="24" :md="5">
+                    <a-col :sm="24" :md="4">
                       <a-form-item label="IPv6 Pool:">
                         <a-input v-model="server.ipv6Pool" placeholder="2a01:xxx::/112" :disabled="!server.ipv6Enabled" />
                       </a-form-item>
                     </a-col>
-                    <a-col :sm="24" :md="5">
+                    <a-col :sm="24" :md="4">
                       <a-form-item label="IPv6 Gateway:">
                         <a-input v-model="server.ipv6Gateway" placeholder="fe80::1" :disabled="!server.ipv6Enabled" />
                       </a-form-item>
@@ -143,16 +158,15 @@
                         </a-select>
                       </a-form-item>
                     </a-col>
+                    <a-col :sm="24" :md="6">
+                      <a-form-item label="DNS (for clients):">
+                        <a-input v-model="server.dns" placeholder="1.1.1.1,2606:4700:4700::1111" />
+                      </a-form-item>
+                    </a-col>
                   </a-row>
-                  <a-form-item label="DNS (for clients)">
-                    <a-input v-model="server.dns" placeholder="1.1.1.1,2606:4700:4700::1111" />
-                  </a-form-item>
                 </a-collapse-panel>
 
                 <a-collapse-panel key="obfuscation" header="Obfuscation Parameters (AmneziaWG)">
-                  <a-alert type="info" class="mb-10"
-                    message="These parameters must match between server and all clients. Changing them will break existing connections."
-                    show-icon />
                   <a-row :gutter="16">
                     <a-col :xs="12" :sm="8" :md="4">
                       <a-form-item label="Jc">
@@ -205,9 +219,6 @@
                 </a-collapse-panel>
 
                 <a-collapse-panel key="scripts" header="PostUp / PostDown Scripts">
-                  <a-alert type="warning" class="mb-10"
-                    message="Leave empty to use auto-generated iptables/forwarding rules. Custom scripts override the defaults."
-                    show-icon />
                   <a-form-item label="PostUp">
                     <a-textarea v-model="server.postUp" :auto-size="{ minRows: 2, maxRows: 6 }"
                       placeholder="Auto-generated if empty" />

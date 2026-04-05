@@ -45,6 +45,7 @@ func setEmbeddedTemplates(engine *gin.Engine) error {
 type Server struct {
 	httpServer *http.Server
 	listener   net.Listener
+	listener6  net.Listener
 
 	sub            *SUBController
 	settingService service.SettingService
@@ -325,36 +326,54 @@ func (s *Server) Start() (err error) {
 		return err
 	}
 
-	listenAddr := net.JoinHostPort(listen, strconv.Itoa(port))
-	listener, err := net.Listen("tcp", listenAddr)
-	if err != nil {
-		return err
+	portStr := strconv.Itoa(port)
+
+	wrapListener := func(l net.Listener) net.Listener {
+		if certFile != "" || keyFile != "" {
+			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+			if err == nil {
+				c := &tls.Config{Certificates: []tls.Certificate{cert}}
+				l = network.NewAutoHttpsListener(l)
+				l = tls.NewListener(l, c)
+				logger.Info("Sub server running HTTPS on", l.Addr())
+			} else {
+				logger.Error("Error loading certificates:", err)
+				logger.Info("Sub server running HTTP on", l.Addr())
+			}
+		} else {
+			logger.Info("Sub server running HTTP on", l.Addr())
+		}
+		return l
 	}
 
-	if certFile != "" || keyFile != "" {
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-		if err == nil {
-			c := &tls.Config{
-				Certificates: []tls.Certificate{cert},
-			}
-			listener = network.NewAutoHttpsListener(listener)
-			listener = tls.NewListener(listener, c)
-			logger.Info("Sub server running HTTPS on", listener.Addr())
+	s.httpServer = &http.Server{Handler: engine}
+
+	if listen == "" {
+		// Dual-stack: bind separately on IPv4 and IPv6
+		l4, err := net.Listen("tcp4", net.JoinHostPort("0.0.0.0", portStr))
+		if err != nil {
+			return err
+		}
+		s.listener = wrapListener(l4)
+
+		l6, err6 := net.Listen("tcp6", net.JoinHostPort("::", portStr))
+		if err6 == nil {
+			s.listener6 = wrapListener(l6)
+			go s.httpServer.Serve(s.listener6)
 		} else {
-			logger.Error("Error loading certificates:", err)
-			logger.Info("Sub server running HTTP on", listener.Addr())
+			logger.Warning("Sub server: could not bind IPv6:", err6)
 		}
 	} else {
-		logger.Info("Sub server running HTTP on", listener.Addr())
-	}
-	s.listener = listener
-
-	s.httpServer = &http.Server{
-		Handler: engine,
+		listenAddr := net.JoinHostPort(listen, portStr)
+		l, err := net.Listen("tcp", listenAddr)
+		if err != nil {
+			return err
+		}
+		s.listener = wrapListener(l)
 	}
 
 	go func() {
-		s.httpServer.Serve(listener)
+		s.httpServer.Serve(s.listener)
 	}()
 
 	return nil
@@ -364,15 +383,17 @@ func (s *Server) Start() (err error) {
 func (s *Server) Stop() error {
 	s.cancel()
 
-	var err1 error
-	var err2 error
+	var err1, err2, err3 error
 	if s.httpServer != nil {
 		err1 = s.httpServer.Shutdown(s.ctx)
 	}
 	if s.listener != nil {
 		err2 = s.listener.Close()
 	}
-	return common.Combine(err1, err2)
+	if s.listener6 != nil {
+		err3 = s.listener6.Close()
+	}
+	return common.Combine(err1, err2, err3)
 }
 
 // GetCtx returns the server's context for cancellation and deadline management.

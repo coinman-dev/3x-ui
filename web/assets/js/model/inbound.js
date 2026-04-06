@@ -2753,7 +2753,7 @@ Inbound.AmneziawgSettings.AwgPeer = class extends XrayCommonClass {
         this.email = email;
         this.enable = enable;
         this.comment = comment;
-        this._totalGB = totalGB;
+        this.totalGB = totalGB;
         this.expiryTime = expiryTime;
         this.reset = reset;
         this.subId = subId;
@@ -2775,6 +2775,14 @@ Inbound.AmneziawgSettings.AwgPeer = class extends XrayCommonClass {
         } else {
             this.expiryTime = t.valueOf();
         }
+    }
+
+    get _totalGB() {
+        return NumberFormatter.toFixed(this.totalGB / SizeFormatter.ONE_GB, 2);
+    }
+
+    set _totalGB(gb) {
+        this.totalGB = NumberFormatter.toFixed(gb * SizeFormatter.ONE_GB, 0);
     }
 
     static fromJson(json = {}) {
@@ -2801,7 +2809,7 @@ Inbound.AmneziawgSettings.AwgPeer = class extends XrayCommonClass {
             email: this.email,
             enable: this.enable,
             comment: this.comment,
-            totalGB: this._totalGB,
+            totalGB: this.totalGB,
             expiryTime: this.expiryTime,
             reset: this.reset,
             subId: this.subId,

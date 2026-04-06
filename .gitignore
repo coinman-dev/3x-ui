@@ -16,6 +16,7 @@ backup/
 bin/
 dist/
 release/
+target/
 node_modules/
 
 # Ignore compiled binaries

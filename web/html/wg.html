@@ -1,0 +1,979 @@
+{{ template "page/head_start" .}}
+<style>
+  @media (min-width: 769px) {
+    .wg-page .ant-layout-content { margin: 24px 16px; }
+  }
+  @media (max-width: 768px) {
+    .wg-page .ant-layout-content { margin: 8px 8px; }
+    .wg-page .ant-tabs-nav .ant-tabs-tab { margin: 0; padding: 12px .5rem; }
+  }
+  .dark .ant-badge-status-text {
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .wg-page .ant-tabs-bar {
+    margin: 0;
+  }
+  .wg-page .ant-list-item {
+    display: block;
+  }
+  .wg-page .ant-list-item > li {
+    padding: 10px 20px !important;
+  }
+  .wg-page .ant-collapse-content-box .ant-alert {
+    margin-block-end: 12px;
+  }
+  .wg-page .wg-status-control {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .wg-page .wg-status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 92px;
+    padding: 4px 14px;
+    border-radius: 6px;
+    color: #fff;
+    line-height: 1.5715;
+    cursor: default;
+    user-select: none;
+  }
+  .wg-page .wg-status-badge.is-running {
+    background: #008771;
+  }
+  .wg-page .wg-status-badge.is-stopped {
+    background: #cd3838;
+  }
+  .wg-page .wg-status-version {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 2px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    background: rgba(0, 0, 0, 0.03);
+    color: rgba(0, 0, 0, 0.65);
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .wg-page .wg-status-version.is-installed {
+    background: rgba(0, 135, 113, 0.08);
+    border: 1px solid rgba(0, 135, 113, 0.32);
+    color: #00594b;
+  }
+  .wg-page.dark .wg-status-version {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.75);
+  }
+  .wg-page.dark .wg-status-version.is-installed {
+    background: rgba(17, 36, 33, 0.95);
+    border: 1px solid rgba(25, 81, 65, 0.95);
+    color: #3ad3ba;
+  }
+</style>
+{{ template "page/head_end" .}}
+
+{{ template "page/body_start" .}}
+<a-layout id="app" v-cloak :class="themeSwitcher.currentTheme + ' wg-page'">
+  <a-sidebar></a-sidebar>
+  <a-layout id="content-layout">
+    <a-layout-content>
+      <a-spin :spinning="loadingStates.spinning" :delay="500"
+        tip='{{ i18n "loading"}}'>
+        <transition name="list" appear>
+          <a-row v-if="!loadingStates.fetched">
+            <a-card
+              :style="{ textAlign: 'center', padding: '30px 0', marginTop: '10px', background: 'transparent', border: 'none' }">
+              <a-spin tip='{{ i18n "loading" }}'></a-spin>
+            </a-card>
+          </a-row>
+          <a-row :gutter="[isMobile ? 8 : 16, isMobile ? 0 : 12]" v-else>
+            <a-col>
+              <a-card hoverable>
+                <a-row
+                  :style="{ display: 'flex', flexWrap: 'wrap', alignItems: 'center' }">
+                  <a-col :xs="24" :sm="10" :style="{ padding: '4px' }">
+                    <a-space direction="horizontal">
+                      <a-button type="primary" :loading="activeSaveLoading"
+                        :disabled="!activeServerLoaded"
+                        @click="saveActiveServer">
+                        [[ activeSaveText ]]
+                      </a-button>
+                      <a-popconfirm @confirm="resetActiveServer"
+                        ok-text="{{ i18n "confirm" }}"
+                        cancel-text="{{ i18n "cancel" }}">
+                        <template slot="title">
+                          <p style="margin:0">[[ activeResetConfirm1 ]]</p>
+                          <p style="margin:4px 0 0">[[ activeResetConfirm2 ]]</p>
+                        </template>
+                        <a-button type="danger" :loading="activeResetLoading"
+                          :disabled="!activeServerLoaded">
+                          [[ activeResetText ]]
+                        </a-button>
+                      </a-popconfirm>
+                    </a-space>
+                  </a-col>
+                  <a-col :xs="24" :sm="14">
+                    <template>
+                      <div>
+                        <a-back-top
+                          :target="() => document.getElementById('content-layout')"
+                          visibility-height="200"></a-back-top>
+                        <a-alert type="warning"
+                          :style="{ float: 'right', width: isMobile ? '100%' : 'fit-content', maxWidth: isMobile ? '100%' : '620px' }"
+                          :message="activeInfoMessage"
+                          show-icon>
+                        </a-alert>
+                      </div>
+                    </template>
+                  </a-col>
+                </a-row>
+              </a-card>
+            </a-col>
+            <a-col>
+              <a-tabs v-model="activeTab"
+                :class="themeSwitcher.currentTheme">
+                <a-tab-pane key="awg" :style="{ paddingTop: '20px' }"
+                  force-render="true">
+                  <template #tab>
+                    <a-icon type="lock"></a-icon>
+                    <span>AmneziaWG</span>
+                  </template>
+                  <a-collapse v-model="awgActivePanel">
+                    <a-collapse-panel key="network"
+                      header='{{ i18n "pages.awg.networkSettings" }}'>
+                      <a-setting-list-item paddings="small">
+                        <template #title>AmneziaWG Server</template>
+                        <template #description>{{ i18n
+                          "pages.awg.serverEnabledDesc" }}</template>
+                        <template #control>
+                          <a-switch :checked="awgServer.enable"
+                            @change="toggleAwgServer"
+                            :loading="awgToggling"
+                            checked-children="ON"
+                            un-checked-children="OFF" />
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.serverStatus" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.serverStatusDesc" }}</template>
+                        <template #control>
+                          <div class="wg-status-control">
+                            <span class="wg-status-badge"
+                              :class="awgStatus.running ? 'is-running' : 'is-stopped'">
+                              [[ awgStatus.running ? '{{ i18n "pages.awg.running" }}' : '{{ i18n "pages.awg.stopped" }}' ]]
+                            </span>
+                            <span class="wg-status-version"
+                              :class="{ 'is-installed': awgStatus.awgInstalled }"
+                              v-if="awgStatus.awgInstalled">[[ awgStatus.awgVersion ]]</span>
+                            <span class="wg-status-version"
+                              v-else>{{ i18n "pages.awg.notInstalled" }}</span>
+                          </div>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.interfaceName" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.interfaceNameDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="awgServer.interfaceName"
+                            placeholder="awg0"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.listenPort" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.listenPortDesc" }}</template>
+                        <template #control>
+                          <a-input-number v-model="awgServer.listenPort"
+                            :min="1" :max="65535"
+                            :style="{ width: '100%' }"></a-input-number>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>MTU</template>
+                        <template #description>{{ i18n
+                          "pages.awg.mtuDesc" }}</template>
+                        <template #control>
+                          <a-input-number v-model="awgServer.mtu"
+                            :min="1280" :max="9000"
+                            :style="{ width: '100%' }"></a-input-number>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.serverPublicKey" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.serverPublicKeyDesc" }}</template>
+                        <template #control>
+                          <a-input :value="awgServer.publicKey" disabled>
+                            <a-tooltip slot="suffix" title='{{ i18n "copy" }}'>
+                              <a-icon type="copy"
+                                @click="copyText(awgServer.publicKey)"
+                                :style="{ cursor: 'pointer' }" />
+                            </a-tooltip>
+                          </a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.endpoint" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.endpointDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="awgServer.endpoint"
+                            placeholder="your-server-ip-or-domain"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.ipv4Address" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.ipv4AddressDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="awgServer.ipv4Address"
+                            placeholder="10.66.66.1/24"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.ipv4Pool" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.ipv4PoolDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="awgServer.ipv4Pool"
+                            placeholder="10.66.66.0/24"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.externalInterface" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.externalInterfaceDesc" }}</template>
+                        <template #control>
+                          <a-select v-model="awgServer.externalInterface"
+                            :dropdown-class-name="themeSwitcher.currentTheme"
+                            :style="{ width: '100%' }"
+                            :placeholder="awgDefaultIPv4Interface || '{{ i18n "pages.awg.autoDetect" }}'"
+                            :not-found-content="'{{ i18n "pages.awg.noInterfaces" }}'">
+                            <a-select-option v-for="iface in awgInterfaceOptions"
+                              :key="iface.name"
+                              :value="iface.name">
+                              <span>[[ iface.name ]]</span>
+                            </a-select-option>
+                          </a-select>
+                        </template>
+                      </a-setting-list-item>
+                      <a-divider>{{ i18n "pages.awg.ipv6Title" }}</a-divider>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.enableIpv6" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.enableIpv6Desc" }}</template>
+                        <template #control>
+                          <a-switch v-model="awgServer.ipv6Enabled"
+                            checked-children="ON"
+                            un-checked-children="OFF"></a-switch>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.ipv6Address" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.ipv6AddressDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="awgServer.ipv6Address"
+                            placeholder="2a01:xxx::1/112"
+                            :disabled="!awgServer.ipv6Enabled"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.ipv6Pool" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.ipv6PoolDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="awgServer.ipv6Pool"
+                            placeholder="2a01:xxx::/112"
+                            :disabled="!awgServer.ipv6Enabled"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.ipv6Gateway" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.ipv6GatewayDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="awgServer.ipv6Gateway"
+                            placeholder="fe80::1"
+                            :disabled="!awgServer.ipv6Enabled"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.dnsClients" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.dnsClientsDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="awgServer.dns"
+                            placeholder="1.1.1.1,2606:4700:4700::1111"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.awg.externalInterface" }}</template>
+                        <template #description>{{ i18n
+                          "pages.awg.ipv6ExternalInterfaceDesc" }}</template>
+                        <template #control>
+                          <a-select v-model="awgServer.ipv6ExternalInterface"
+                            :dropdown-class-name="themeSwitcher.currentTheme"
+                            :style="{ width: '100%' }"
+                            :placeholder="'{{ i18n "pages.awg.sameAsIpv4" }} (' + (awgServer.externalInterface || awgDefaultIPv4Interface || 'auto') + ')'"
+                            :disabled="!awgServer.ipv6Enabled"
+                            :not-found-content="'{{ i18n "pages.awg.noInterfaces" }}'">
+                            <a-select-option v-for="iface in awgInterfaceOptions"
+                              :key="iface.name"
+                              :value="iface.name">
+                              <span>[[ iface.name ]]</span>
+                            </a-select-option>
+                          </a-select>
+                        </template>
+                      </a-setting-list-item>
+                    </a-collapse-panel>
+                    <a-collapse-panel key="obfuscation"
+                      header='{{ i18n "pages.awg.obfuscation" }}'>
+                      <a-setting-list-item paddings="small">
+                        <template #title>Jc</template>
+                        <template #description>{{ i18n
+                          "pages.awg.jcDesc" }}</template>
+                        <template #control>
+                          <a-input-number v-model="awgServer.jc" :min="0"
+                            :style="{ width: '100%' }"></a-input-number>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>Jmin</template>
+                        <template #description>{{ i18n
+                          "pages.awg.jminDesc" }}</template>
+                        <template #control>
+                          <a-input-number v-model="awgServer.jmin" :min="0"
+                            :style="{ width: '100%' }"></a-input-number>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>Jmax</template>
+                        <template #description>{{ i18n
+                          "pages.awg.jmaxDesc" }}</template>
+                        <template #control>
+                          <a-input-number v-model="awgServer.jmax" :min="0"
+                            :style="{ width: '100%' }"></a-input-number>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>S1</template>
+                        <template #description>{{ i18n
+                          "pages.awg.s1Desc" }}</template>
+                        <template #control>
+                          <a-input-number v-model="awgServer.s1" :min="0"
+                            :style="{ width: '100%' }"></a-input-number>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>S2</template>
+                        <template #description>{{ i18n
+                          "pages.awg.s2Desc" }}</template>
+                        <template #control>
+                          <a-input-number v-model="awgServer.s2" :min="0"
+                            :style="{ width: '100%' }"></a-input-number>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>H1</template>
+                        <template #description>{{ i18n
+                          "pages.awg.h1Desc" }}</template>
+                        <template #control>
+                          <a-input-number v-model="awgServer.h1" :min="0"
+                            :style="{ width: '100%' }"></a-input-number>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>H2</template>
+                        <template #description>{{ i18n
+                          "pages.awg.h2Desc" }}</template>
+                        <template #control>
+                          <a-input-number v-model="awgServer.h2" :min="0"
+                            :style="{ width: '100%' }"></a-input-number>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>H3</template>
+                        <template #description>{{ i18n
+                          "pages.awg.h3Desc" }}</template>
+                        <template #control>
+                          <a-input-number v-model="awgServer.h3" :min="0"
+                            :style="{ width: '100%' }"></a-input-number>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>H4</template>
+                        <template #description>{{ i18n
+                          "pages.awg.h4Desc" }}</template>
+                        <template #control>
+                          <a-input-number v-model="awgServer.h4" :min="0"
+                            :style="{ width: '100%' }"></a-input-number>
+                        </template>
+                      </a-setting-list-item>
+                    </a-collapse-panel>
+                    <a-collapse-panel key="scripts"
+                      header='{{ i18n "pages.awg.scripts" }}'>
+                      <a-setting-list-item paddings="small">
+                        <template #title>PostUp</template>
+                        <template #description>{{ i18n "pages.awg.postUpDesc"
+                          }}</template>
+                        <template #control>
+                          <a-textarea v-model="awgServer.postUp"
+                            :auto-size="{ minRows: 2, maxRows: 6 }"
+                            :placeholder="'{{ i18n "pages.awg.autoGenerated" }}'"></a-textarea>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>PostDown</template>
+                        <template #description>{{ i18n "pages.awg.postDownDesc"
+                          }}</template>
+                        <template #control>
+                          <a-textarea v-model="awgServer.postDown"
+                            :auto-size="{ minRows: 2, maxRows: 6 }"
+                            :placeholder="'{{ i18n "pages.awg.autoGenerated" }}'"></a-textarea>
+                        </template>
+                      </a-setting-list-item>
+                    </a-collapse-panel>
+                  </a-collapse>
+                </a-tab-pane>
+                <a-tab-pane key="wg" :style="{ paddingTop: '20px' }"
+                  force-render="true">
+                  <template #tab>
+                    <a-icon type="safety"></a-icon>
+                    <span>Wireguard Native</span>
+                  </template>
+                  <a-collapse v-model="wgActivePanel">
+                    <a-collapse-panel key="network"
+                      header='{{ i18n "pages.nativewg.networkSettings" }}'>
+                      <a-setting-list-item paddings="small">
+                        <template #title>WireGuard Native Server</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.serverEnabledDesc" }}</template>
+                        <template #control>
+                          <a-switch :checked="wgServer.enable"
+                            @change="toggleWgServer"
+                            :loading="wgToggling"
+                            checked-children="ON"
+                            un-checked-children="OFF" />
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.serverStatus" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.serverStatusDesc" }}</template>
+                        <template #control>
+                          <div class="wg-status-control">
+                            <span class="wg-status-badge"
+                              :class="wgStatus.running ? 'is-running' : 'is-stopped'">
+                              [[ wgStatus.running ? '{{ i18n "pages.nativewg.running" }}' : '{{ i18n "pages.nativewg.stopped" }}' ]]
+                            </span>
+                            <span class="wg-status-version"
+                              :class="{ 'is-installed': wgStatus.wgInstalled }"
+                              v-if="wgStatus.wgInstalled">[[ wgStatus.wgVersion ]]</span>
+                            <span class="wg-status-version"
+                              v-else>{{ i18n "pages.nativewg.notInstalled" }}</span>
+                          </div>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.interfaceName" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.interfaceNameDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="wgServer.interfaceName"
+                            placeholder="wg0"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.listenPort" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.listenPortDesc" }}</template>
+                        <template #control>
+                          <a-input-number v-model="wgServer.listenPort"
+                            :min="1" :max="65535"
+                            :style="{ width: '100%' }"></a-input-number>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>MTU</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.mtuDesc" }}</template>
+                        <template #control>
+                          <a-input-number v-model="wgServer.mtu"
+                            :min="1280" :max="9000"
+                            :style="{ width: '100%' }"></a-input-number>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.serverPublicKey" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.serverPublicKeyDesc" }}</template>
+                        <template #control>
+                          <a-input :value="wgServer.publicKey" disabled>
+                            <a-tooltip slot="suffix" title='{{ i18n "copy" }}'>
+                              <a-icon type="copy"
+                                @click="copyText(wgServer.publicKey)"
+                                :style="{ cursor: 'pointer' }" />
+                            </a-tooltip>
+                          </a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.endpoint" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.endpointDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="wgServer.endpoint"
+                            placeholder="your-server-ip-or-domain"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.ipv4Address" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.ipv4AddressDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="wgServer.ipv4Address"
+                            placeholder="10.77.77.1/24"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.ipv4Pool" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.ipv4PoolDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="wgServer.ipv4Pool"
+                            placeholder="10.77.77.0/24"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.externalInterface" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.externalInterfaceDesc" }}</template>
+                        <template #control>
+                          <a-select v-model="wgServer.externalInterface"
+                            :dropdown-class-name="themeSwitcher.currentTheme"
+                            :style="{ width: '100%' }"
+                            :placeholder="wgDefaultIPv4Interface || '{{ i18n "pages.nativewg.autoDetect" }}'"
+                            :not-found-content="'{{ i18n "pages.nativewg.noInterfaces" }}'">
+                            <a-select-option v-for="iface in wgInterfaceOptions"
+                              :key="iface.name"
+                              :value="iface.name">
+                              <span>[[ iface.name ]]</span>
+                            </a-select-option>
+                          </a-select>
+                        </template>
+                      </a-setting-list-item>
+                      <a-divider>{{ i18n "pages.nativewg.ipv6Title" }}</a-divider>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.enableIpv6" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.enableIpv6Desc" }}</template>
+                        <template #control>
+                          <a-switch v-model="wgServer.ipv6Enabled"
+                            checked-children="ON"
+                            un-checked-children="OFF"></a-switch>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.ipv6Address" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.ipv6AddressDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="wgServer.ipv6Address"
+                            placeholder="2a01:xxx::1/112"
+                            :disabled="!wgServer.ipv6Enabled"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.ipv6Pool" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.ipv6PoolDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="wgServer.ipv6Pool"
+                            placeholder="2a01:xxx::/112"
+                            :disabled="!wgServer.ipv6Enabled"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.ipv6Gateway" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.ipv6GatewayDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="wgServer.ipv6Gateway"
+                            placeholder="fe80::1"
+                            :disabled="!wgServer.ipv6Enabled"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.dnsClients" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.dnsClientsDesc" }}</template>
+                        <template #control>
+                          <a-input v-model="wgServer.dns"
+                            placeholder="1.1.1.1,2606:4700:4700::1111"></a-input>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>{{ i18n "pages.nativewg.externalInterface" }}</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.ipv6ExternalInterfaceDesc" }}</template>
+                        <template #control>
+                          <a-select v-model="wgServer.ipv6ExternalInterface"
+                            :dropdown-class-name="themeSwitcher.currentTheme"
+                            :style="{ width: '100%' }"
+                            :placeholder="'{{ i18n "pages.nativewg.sameAsIpv4" }} (' + (wgServer.externalInterface || wgDefaultIPv4Interface || 'auto') + ')'"
+                            :disabled="!wgServer.ipv6Enabled"
+                            :not-found-content="'{{ i18n "pages.nativewg.noInterfaces" }}'">
+                            <a-select-option v-for="iface in wgInterfaceOptions"
+                              :key="iface.name"
+                              :value="iface.name">
+                              <span>[[ iface.name ]]</span>
+                            </a-select-option>
+                          </a-select>
+                        </template>
+                      </a-setting-list-item>
+                    </a-collapse-panel>
+                    <a-collapse-panel key="scripts"
+                      header='{{ i18n "pages.nativewg.scripts" }}'>
+                      <a-setting-list-item paddings="small">
+                        <template #title>PostUp</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.postUpDesc" }}</template>
+                        <template #control>
+                          <a-textarea v-model="wgServer.postUp"
+                            :auto-size="{ minRows: 2, maxRows: 6 }"
+                            :placeholder="'{{ i18n "pages.nativewg.autoGenerated" }}'"></a-textarea>
+                        </template>
+                      </a-setting-list-item>
+                      <a-setting-list-item paddings="small">
+                        <template #title>PostDown</template>
+                        <template #description>{{ i18n
+                          "pages.nativewg.postDownDesc" }}</template>
+                        <template #control>
+                          <a-textarea v-model="wgServer.postDown"
+                            :auto-size="{ minRows: 2, maxRows: 6 }"
+                            :placeholder="'{{ i18n "pages.nativewg.autoGenerated" }}'"></a-textarea>
+                        </template>
+                      </a-setting-list-item>
+                    </a-collapse-panel>
+                  </a-collapse>
+                </a-tab-pane>
+              </a-tabs>
+            </a-col>
+          </a-row>
+        </transition>
+      </a-spin>
+    </a-layout-content>
+  </a-layout>
+</a-layout>
+
+{{template "page/body_scripts" .}}
+<script src="{{ .base_path }}assets/js/model/awg.js?{{ .cur_ver }}"></script>
+<script src="{{ .base_path }}assets/js/model/wg.js?{{ .cur_ver }}"></script>
+{{template "component/aSidebar" .}}
+{{template "component/aThemeSwitch" .}}
+{{template "component/aSettingListItem" .}}
+
+<script>
+  const app = new Vue({
+    delimiters: ['[[', ']]'],
+    el: '#app',
+    mixins: [MediaQueryMixin],
+    data: {
+      themeSwitcher,
+      loadingStates: {
+        fetched: false,
+        spinning: false
+      },
+      activeTab: '{{ .active_wg_tab }}' || 'awg',
+
+      // AWG state
+      awgLoading: true,
+      awgServerLoaded: false,
+      awgSaving: false,
+      awgResetting: false,
+      awgToggling: false,
+      awgActivePanel: ['network'],
+      awgServer: new AwgServer(),
+      awgNetworkInterfaces: [],
+      awgStatus: { running: false, awgInstalled: false, awgVersion: 'unknown' },
+
+      // WG Native state
+      wgLoading: true,
+      wgServerLoaded: false,
+      wgSaving: false,
+      wgResetting: false,
+      wgToggling: false,
+      wgActivePanel: ['network'],
+      wgServer: new WgServer(),
+      wgNetworkInterfaces: [],
+      wgStatus: { running: false, wgInstalled: false, wgVersion: 'unknown' },
+    },
+    async created() {
+      await this.loadAllData();
+    },
+    computed: {
+      isAwgTab() {
+        return this.activeTab === 'awg';
+      },
+      activeServerLoaded() {
+        return this.isAwgTab ? this.awgServerLoaded : this.wgServerLoaded;
+      },
+      activeSaveLoading() {
+        return this.isAwgTab ? this.awgSaving : this.wgSaving;
+      },
+      activeResetLoading() {
+        return this.isAwgTab ? this.awgResetting : this.wgResetting;
+      },
+      activeSaveText() {
+        return this.isAwgTab
+          ? '{{ i18n "pages.awg.saveSettings" }}'
+          : '{{ i18n "pages.nativewg.saveSettings" }}';
+      },
+      activeResetText() {
+        return this.isAwgTab
+          ? '{{ i18n "pages.awg.resetDefaults" }}'
+          : '{{ i18n "pages.nativewg.resetDefaults" }}';
+      },
+      activeResetConfirm1() {
+        return this.isAwgTab
+          ? '{{ i18n "pages.awg.resetConfirm1" }}'
+          : '{{ i18n "pages.nativewg.resetConfirm1" }}';
+      },
+      activeResetConfirm2() {
+        return this.isAwgTab
+          ? '{{ i18n "pages.awg.resetConfirm2" }}'
+          : '{{ i18n "pages.nativewg.resetConfirm2" }}';
+      },
+      activeInfoMessage() {
+        return this.isAwgTab
+          ? '{{ i18n "pages.awg.saveHint" }}'
+          : '{{ i18n "pages.nativewg.saveHint" }}';
+      },
+      awgInterfaceOptions() {
+        return this.awgNetworkInterfaces;
+      },
+      awgDefaultIPv4Interface() {
+        return this.pickDefaultInterface(this.awgNetworkInterfaces, 'ipv4');
+      },
+      awgDefaultIPv6Interface() {
+        return this.pickDefaultInterface(this.awgNetworkInterfaces, 'ipv6');
+      },
+      wgInterfaceOptions() {
+        return this.wgNetworkInterfaces;
+      },
+      wgDefaultIPv4Interface() {
+        return this.pickDefaultInterface(this.wgNetworkInterfaces, 'ipv4');
+      },
+      wgDefaultIPv6Interface() {
+        return this.pickDefaultInterface(this.wgNetworkInterfaces, 'ipv6');
+      },
+    },
+    methods: {
+      pickDefaultInterface(interfaces, ipFamily) {
+        if (!Array.isArray(interfaces) || interfaces.length === 0) {
+          return '';
+        }
+
+        const defaultFlag = ipFamily === 'ipv6' ? 'defaultIPv6' : 'defaultIPv4';
+        const capabilityFlag = ipFamily === 'ipv6' ? 'ipv6' : 'ipv4';
+        const byRoute = interfaces.find(i => i[defaultFlag]);
+        if (byRoute && byRoute.name) {
+          return byRoute.name;
+        }
+        const byCapability = interfaces.find(i => i[capabilityFlag]);
+        if (byCapability && byCapability.name) {
+          return byCapability.name;
+        }
+        return interfaces[0].name || '';
+      },
+      applyDetectedInterfaceDefaults(server, interfaces) {
+        if (!server || !Array.isArray(interfaces) || interfaces.length === 0) {
+          return;
+        }
+
+        const names = new Set(interfaces.map(i => i.name));
+        const defaultIPv4 = this.pickDefaultInterface(interfaces, 'ipv4');
+        const defaultIPv6 = this.pickDefaultInterface(interfaces, 'ipv6');
+
+        if ((!server.externalInterface || !names.has(server.externalInterface)) && defaultIPv4) {
+          server.externalInterface = defaultIPv4;
+        }
+        if ((!server.ipv6ExternalInterface || !names.has(server.ipv6ExternalInterface)) && defaultIPv6) {
+          server.ipv6ExternalInterface = defaultIPv6;
+        }
+      },
+      async loadAllData() {
+        this.loadingStates.spinning = true;
+        try {
+          await Promise.all([this.loadAwgData(), this.loadWgData()]);
+        } finally {
+          this.loadingStates.fetched = true;
+          this.loadingStates.spinning = false;
+        }
+      },
+
+      async saveActiveServer() {
+        if (this.isAwgTab) {
+          await this.saveAwgServer();
+          return;
+        }
+        await this.saveWgServer();
+      },
+      async resetActiveServer() {
+        if (this.isAwgTab) {
+          await this.resetAwgToDefaults();
+          return;
+        }
+        await this.resetWgToDefaults();
+      },
+
+      // ---- AWG methods ----
+      async loadAwgData() {
+        this.awgLoading = true;
+        try {
+          await Promise.all([
+            this.loadAwgServer(),
+            this.loadAwgStatus(),
+            this.loadAwgInterfaces()
+          ]);
+          this.applyDetectedInterfaceDefaults(this.awgServer, this.awgNetworkInterfaces);
+          this.awgServerLoaded = true;
+        } finally {
+          this.awgLoading = false;
+        }
+      },
+      async loadAwgServer() {
+        const msg = await HttpUtil.get('panel/api/awg/server');
+        if (msg.success) this.awgServer = new AwgServer(msg.obj);
+      },
+      async loadAwgStatus() {
+        const msg = await HttpUtil.get('panel/api/awg/server/status');
+        if (msg.success) this.awgStatus = msg.obj;
+      },
+      async loadAwgInterfaces() {
+        const msg = await HttpUtil.get('panel/api/awg/interfaces');
+        if (msg.success) this.awgNetworkInterfaces = msg.obj || [];
+      },
+      async saveAwgServer() {
+        this.awgSaving = true;
+        try {
+          const msg = await HttpUtil.postJson('panel/api/awg/server', this.awgServer);
+          if (msg.success) await this.loadAwgStatus();
+        } finally {
+          this.awgSaving = false;
+        }
+      },
+      async toggleAwgServer(enable) {
+        this.awgToggling = true;
+        try {
+          const msg = await HttpUtil.postJson('panel/api/awg/server/toggle', { enable });
+          if (msg.success) {
+            this.awgServer.enable = enable;
+            await this.loadAwgStatus();
+          }
+        } finally {
+          this.awgToggling = false;
+        }
+      },
+      async resetAwgToDefaults() {
+        this.awgResetting = true;
+        try {
+          const msg = await HttpUtil.postJson('panel/api/awg/server/reset', {});
+          if (msg.success) {
+            this.awgServer = new AwgServer(msg.obj);
+            await this.loadAwgStatus();
+            this.$message.success('{{ i18n "pages.awg.resetSuccess" }}');
+          }
+        } finally {
+          this.awgResetting = false;
+        }
+      },
+
+      // ---- WG Native methods ----
+      async loadWgData() {
+        this.wgLoading = true;
+        try {
+          await Promise.all([
+            this.loadWgServer(),
+            this.loadWgStatus(),
+            this.loadWgInterfaces()
+          ]);
+          this.applyDetectedInterfaceDefaults(this.wgServer, this.wgNetworkInterfaces);
+          this.wgServerLoaded = true;
+        } finally {
+          this.wgLoading = false;
+        }
+      },
+      async loadWgServer() {
+        const msg = await HttpUtil.get('panel/api/wg/server');
+        if (msg.success) this.wgServer = new WgServer(msg.obj);
+      },
+      async loadWgStatus() {
+        const msg = await HttpUtil.get('panel/api/wg/server/status');
+        if (msg.success) this.wgStatus = msg.obj;
+      },
+      async loadWgInterfaces() {
+        const msg = await HttpUtil.get('panel/api/wg/interfaces');
+        if (msg.success) this.wgNetworkInterfaces = msg.obj || [];
+      },
+      async saveWgServer() {
+        this.wgSaving = true;
+        try {
+          const msg = await HttpUtil.postJson('panel/api/wg/server', this.wgServer);
+          if (msg.success) await this.loadWgStatus();
+        } finally {
+          this.wgSaving = false;
+        }
+      },
+      async toggleWgServer(enable) {
+        this.wgToggling = true;
+        try {
+          const msg = await HttpUtil.postJson('panel/api/wg/server/toggle', { enable });
+          if (msg.success) {
+            this.wgServer.enable = enable;
+            await this.loadWgStatus();
+          }
+        } finally {
+          this.wgToggling = false;
+        }
+      },
+      async resetWgToDefaults() {
+        this.wgResetting = true;
+        try {
+          const msg = await HttpUtil.postJson('panel/api/wg/server/reset', {});
+          if (msg.success) {
+            this.wgServer = new WgServer(msg.obj);
+            await this.loadWgStatus();
+            this.$message.success('{{ i18n "pages.nativewg.resetSuccess" }}');
+          }
+        } finally {
+          this.wgResetting = false;
+        }
+      },
+
+      // ---- Shared ----
+      copyText(text) {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(text).then(() => this.$message.success('{{ i18n "copied" }}'));
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          this.$message.success('{{ i18n "copied" }}');
+        }
+      },
+    },
+  });
+</script>
+{{ template "page/body_end" .}}

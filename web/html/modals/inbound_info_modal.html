@@ -1,4 +1,19 @@
 {{define "modals/inboundInfoModal"}}
+<style>
+  #inbound-info-modal .info-wrap-tag {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.4;
+    height: auto;
+  }
+  #inbound-info-modal .info-wrap-tag.info-no-break {
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+</style>
 <a-modal id="inbound-info-modal" v-model="infoModal.visible"
   title='{{ i18n "pages.inbounds.details"}}' :closable="true"
   :mask-closable="true" :footer="null" width="600px"
@@ -9,14 +24,14 @@
         <tr>
           <td>{{ i18n "protocol" }}</td>
           <td>
-            <a-tag color="purple">[[ dbInbound.protocol ]]</a-tag>
+            <a-tag color="purple">[[ dbInbound.protocolDisplayName ]]</a-tag>
           </td>
         </tr>
         <tr>
           <td>{{ i18n "pages.inbounds.address" }}</td>
           <td>
             <a-tooltip :title="[[ dbInbound.address ]]">
-              <a-tag class="info-large-tag">[[ dbInbound.address ]]</a-tag>
+              <a-tag class="info-large-tag info-wrap-tag info-no-break">[[ dbInbound.address ]]</a-tag>
             </a-tooltip>
           </td>
         </tr>
@@ -44,7 +59,7 @@
               <td>{{ i18n "host" }}</td>
               <td v-if="inbound.host">
                 <a-tooltip :title="[[ inbound.host ]]">
-                  <a-tag class="info-large-tag">[[ inbound.host ]]</a-tag>
+                  <a-tag class="info-large-tag info-wrap-tag">[[ inbound.host ]]</a-tag>
                 </a-tooltip>
               </td>
               <td v-else>
@@ -56,7 +71,7 @@
             <td>{{ i18n "path" }}</td>
             <td v-if="inbound.path">
               <a-tooltip :title="[[ inbound.path ]]">
-                <a-tag class="info-large-tag">[[ inbound.path ]]</a-tag>
+                <a-tag class="info-large-tag info-wrap-tag">[[ inbound.path ]]</a-tag>
               </a-tooltip>
               <td v-else>
                 <a-tag color="orange">{{ i18n "none" }}</a-tag>
@@ -76,7 +91,7 @@
               <td>grpc serviceName</td>
               <td>
                 <a-tooltip :title="[[ inbound.serviceName ]]">
-                  <a-tag class="info-large-tag">[[ inbound.serviceName
+                  <a-tag class="info-large-tag info-wrap-tag">[[ inbound.serviceName
                     ]]</a-tag>
                 </a-tooltip>
                 <tr>
@@ -129,7 +144,7 @@
             <td>{{ i18n "password" }}</td>
             <td>
               <a-tooltip :title="[[ inbound.settings.password  ]]">
-                <a-tag class="info-large-tag">[[ inbound.settings.password
+                <a-tag class="info-large-tag info-wrap-tag">[[ inbound.settings.password
                   ]]</a-tag>
               </a-tooltip>
             </td>
@@ -179,7 +194,7 @@
               <td>{{ i18n "password" }}</td>
               <td>
                 <a-tooltip :title="[[ infoModal.clientSettings.password  ]]">
-                  <a-tag class="info-large-tag">[[
+                  <a-tag class="info-large-tag info-wrap-tag">[[
                     infoModal.clientSettings.password ]]</a-tag>
                 </a-tooltip>
               </td>
@@ -209,9 +224,9 @@
               <td>{{ i18n "pages.inbounds.createdAt" }}</td>
               <td>
                 <template
-                  v-if="infoModal.clientSettings && infoModal.clientSettings.created_at">
+                  v-if="getClientCreatedAt()">
                   <a-tag>[[
-                    IntlUtil.formatDate(infoModal.clientSettings.created_at)
+                    IntlUtil.formatDate(getClientCreatedAt())
                     ]]</a-tag>
                 </template>
                 <template v-else>
@@ -223,9 +238,9 @@
               <td>{{ i18n "pages.inbounds.updatedAt" }}</td>
               <td>
                 <template
-                  v-if="infoModal.clientSettings && infoModal.clientSettings.updated_at">
+                  v-if="getClientUpdatedAt()">
                   <a-tag>[[
-                    IntlUtil.formatDate(infoModal.clientSettings.updated_at)
+                    IntlUtil.formatDate(getClientUpdatedAt())
                     ]]</a-tag>
                 </template>
                 <template v-else>
@@ -236,16 +251,14 @@
             <tr>
               <td>{{ i18n "lastOnline" }}</td>
               <td>
-                <a-tag>[[ app.formatLastOnline(infoModal.clientSettings &&
-                  infoModal.clientSettings.email ?
-                  infoModal.clientSettings.email : '') ]]</a-tag>
+                <a-tag>[[ app.formatLastOnline(getClientLastOnlineKey()) ]]</a-tag>
               </td>
             </tr>
             <tr v-if="infoModal.clientSettings.comment">
               <td>{{ i18n "comment" }}</td>
               <td>
                 <a-tooltip :title="[[ infoModal.clientSettings.comment  ]]">
-                  <a-tag class="info-large-tag">[[
+                  <a-tag class="info-large-tag info-wrap-tag">[[
                     infoModal.clientSettings.comment ]]</a-tag>
                 </a-tooltip>
               </td>
@@ -408,6 +421,26 @@
                 </a-tooltip>
               </tr-info-title>
               <div v-html="infoModal.awgConfig.replaceAll('\n','<br />')"
+                :style="{ borderRadius: '0.5rem', padding: '0.5rem', fontFamily: 'monospace', fontSize: '12px' }"
+                class="client-table-odd-row">
+              </div>
+            </tr-info-row>
+          </template>
+          <template v-if="dbInbound.isNativewg && infoModal.wgConfig">
+            <a-divider>Client Configuration (Peer)</a-divider>
+            <tr-info-row class="tr-info-row">
+              <tr-info-title class="tr-info-title">
+                <a-tag color="blue">Config</a-tag>
+                <a-tooltip title='{{ i18n "copy" }}'>
+                  <a-button :style="{ minWidth: '24px' }" size="small"
+                    icon="snippets" @click="copy(infoModal.wgConfig)"></a-button>
+                </a-tooltip>
+                <a-tooltip title='{{ i18n "download" }}'>
+                  <a-button :style="{ minWidth: '24px' }" size="small"
+                    icon="download" @click="downloadWgConfig()"></a-button>
+                </a-tooltip>
+              </tr-info-title>
+              <div v-html="infoModal.wgConfig.replaceAll('\n','<br />')"
                 :style="{ borderRadius: '0.5rem', padding: '0.5rem', fontFamily: 'monospace', fontSize: '12px' }"
                 class="client-table-odd-row">
               </div>
@@ -665,14 +698,16 @@
     clientIps: '',
     clientIpsArray: [],
     awgConfig: '',
+    wgConfig: '',
     show(dbInbound, index) {
       this.index = index;
       this.inbound = dbInbound.toInbound();
-      this.dbInbound = new DBInbound(dbInbound);
+      this.dbInbound = dbInbound;
       this.clientSettings = this.inbound.clients ? this.inbound.clients[index] : null;
       this.isExpired = this.inbound.clients ? this.inbound.isExpiry(index) : this.dbInbound.isExpiry;
-      this.clientStats = this.inbound.clients ? (this.dbInbound.clientStats.find(row => row.email === this.clientSettings.email) || null) : null;
+      this.clientStats = this.inbound.clients ? this.findClientStats() : null;
       this.awgConfig = '';
+      this.wgConfig = '';
 
       if (
         [
@@ -689,10 +724,11 @@
           })
         }
       }
-      if (this.inbound.protocol == Protocols.AMNEZIAWG && this.clientSettings && this.clientSettings._awgId) {
-        HttpUtil.get(`panel/api/awg/client/${this.clientSettings._awgId}/config`).then(msg => {
-          if (msg.success) infoModal.awgConfig = msg.obj;
-        });
+      if (this.inbound.protocol == Protocols.AMNEZIAWG && this.clientSettings) {
+        this.loadAwgConfig();
+        this.links = [];
+      } else if (this.inbound.protocol == Protocols.NATIVEWG && this.clientSettings) {
+        this.loadWgConfig();
         this.links = [];
       } else if (this.inbound.protocol == Protocols.WIREGUARD) {
         this.links = this.inbound.genInboundLinks(dbInbound.remark).split('\r\n')
@@ -707,6 +743,30 @@
       }
       this.visible = true;
     },
+    isUuidClientProtocol(protocol) {
+      return protocol == Protocols.AMNEZIAWG || protocol == Protocols.NATIVEWG;
+    },
+    getClientLookupKey() {
+      if (!this.clientSettings) {
+        return '';
+      }
+      if (this.isUuidClientProtocol(this.inbound.protocol)) {
+        return this.clientSettings.id || '';
+      }
+      return this.clientSettings.email || '';
+    },
+    findClientStats() {
+      if (!this.dbInbound || !this.dbInbound.clientStats || !this.clientSettings) {
+        return null;
+      }
+      const clientKey = this.getClientLookupKey();
+      return this.dbInbound.clientStats.find((row) => {
+        const statsKey = this.isUuidClientProtocol(this.inbound.protocol)
+          ? row.uuid || ''
+          : row.email || '';
+        return statsKey === clientKey;
+      }) || null;
+    },
     close() {
       infoModal.visible = false;
     },
@@ -715,6 +775,55 @@
     },
     genSubJsonLink(subID) {
       return app.subSettings.subJsonURI + subID;
+    },
+    async hydratePeerMetadata(protocol, clientSettings) {
+      if (!clientSettings || !clientSettings.id) {
+        return null;
+      }
+      const endpoint = protocol == Protocols.AMNEZIAWG ? "awg" : "wg";
+      const clientsMsg = await HttpUtil.get(`/panel/api/${endpoint}/clients`);
+      if (!clientsMsg.success || !clientsMsg.obj) {
+        return null;
+      }
+
+      const peer = clientsMsg.obj.find((c) => c.uuid === clientSettings.id);
+      if (!peer) {
+        return null;
+      }
+
+      if (protocol == Protocols.AMNEZIAWG) {
+        this.clientSettings._awgId = peer.id;
+      } else {
+        this.clientSettings._wgId = peer.id;
+      }
+      if (!this.clientSettings.created_at && peer.createdAt) {
+        this.clientSettings.created_at = peer.createdAt;
+      }
+      if (!this.clientSettings.updated_at && peer.updatedAt) {
+        this.clientSettings.updated_at = peer.updatedAt;
+      }
+
+      return peer;
+    },
+    async loadAwgConfig() {
+      if (!this.clientSettings || !this.clientSettings.id) {
+        return;
+      }
+      await this.hydratePeerMetadata(Protocols.AMNEZIAWG, this.clientSettings);
+      const msg = await HttpUtil.get(`/panel/api/awg/client/uuid/${encodeURIComponent(this.clientSettings.id)}/config`);
+      if (msg.success) {
+        this.awgConfig = msg.obj;
+      }
+    },
+    async loadWgConfig() {
+      if (!this.clientSettings || !this.clientSettings.id) {
+        return;
+      }
+      await this.hydratePeerMetadata(Protocols.NATIVEWG, this.clientSettings);
+      const msg = await HttpUtil.get(`/panel/api/wg/client/uuid/${encodeURIComponent(this.clientSettings.id)}/config`);
+      if (msg.success) {
+        this.wgConfig = msg.obj;
+      }
     }
   };
   const infoModalApp = new Vue({
@@ -829,6 +938,34 @@
       downloadAwgConfig() {
         const email = this.infoModal.clientSettings ? this.infoModal.clientSettings.email : 'awg-client';
         FileManager.downloadTextFile(this.infoModal.awgConfig, `${email}.conf`);
+      },
+      downloadWgConfig() {
+        const email = this.infoModal.clientSettings ? this.infoModal.clientSettings.email : 'wg-client';
+        FileManager.downloadTextFile(this.infoModal.wgConfig, `${email}.conf`);
+      },
+      getClientCreatedAt() {
+        if (!this.infoModal.clientSettings) {
+          return 0;
+        }
+        return this.infoModal.clientSettings.created_at || this.infoModal.clientSettings.createdAt || 0;
+      },
+      getClientUpdatedAt() {
+        if (!this.infoModal.clientSettings) {
+          return 0;
+        }
+        return this.infoModal.clientSettings.updated_at || this.infoModal.clientSettings.updatedAt || 0;
+      },
+      getClientLastOnlineKey() {
+        if (!this.infoModal.clientSettings) {
+          return '';
+        }
+        if (
+          this.inbound.protocol == Protocols.AMNEZIAWG ||
+          this.inbound.protocol == Protocols.NATIVEWG
+        ) {
+          return this.infoModal.clientSettings.id || '';
+        }
+        return this.infoModal.clientSettings.email || '';
       },
     },
   });

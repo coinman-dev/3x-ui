@@ -27,6 +27,7 @@ func (s *AwgService) GetServer() (*model.AwgServer, error) {
 	}
 
 	needSave := false
+	isInitialRecord := server.PrivateKey == "" && server.PublicKey == ""
 
 	// Generate keys if missing
 	if server.PrivateKey == "" {
@@ -36,6 +37,16 @@ func (s *AwgService) GetServer() (*model.AwgServer, error) {
 		}
 		server.PrivateKey = priv
 		server.PublicKey = pub
+		needSave = true
+	}
+
+	// Fresh auto-created records may still inherit the legacy fixed DB default.
+	if server.ListenPort <= 0 || (isInitialRecord && server.ListenPort == legacyAwgListenPort) {
+		port, err := pickRandomTunnelListenPort(getExistingWgListenPort(db))
+		if err != nil {
+			return nil, fmt.Errorf("select AWG listen port: %w", err)
+		}
+		server.ListenPort = port
 		needSave = true
 	}
 
@@ -57,6 +68,15 @@ func (s *AwgService) GetServer() (*model.AwgServer, error) {
 // SaveServer saves server settings and optionally applies them to the OS.
 func (s *AwgService) SaveServer(server *model.AwgServer) error {
 	db := database.GetDB()
+
+	if server.ListenPort <= 0 {
+		port, err := pickRandomTunnelListenPort(getExistingWgListenPort(db))
+		if err != nil {
+			return fmt.Errorf("select AWG listen port: %w", err)
+		}
+		server.ListenPort = port
+	}
+
 	server.UpdatedAt = time.Now().UnixMilli()
 	if err := db.Save(server).Error; err != nil {
 		return err
@@ -114,9 +134,14 @@ func (s *AwgService) ResetToDefaults() (*model.AwgServer, error) {
 		server.ExternalInterface = awg.DetectDefaultInterface()
 	}
 
+	port, err := pickRandomTunnelListenPort(getExistingWgListenPort(db))
+	if err != nil {
+		return nil, fmt.Errorf("select AWG listen port: %w", err)
+	}
+
 	// Reset operational settings to defaults, but keep network config
 	server.Enable = false
-	server.ListenPort = 51820
+	server.ListenPort = port
 	server.MTU = 1420
 	server.PrivateKey = priv
 	server.PublicKey = pub
@@ -190,9 +215,11 @@ func (s *AwgService) GetServerStatus() *AwgStatus {
 
 // NetworkInterface describes a system network interface with its IP capabilities.
 type NetworkInterface struct {
-	Name string `json:"name"`
-	IPv4 bool   `json:"ipv4"`
-	IPv6 bool   `json:"ipv6"`
+	Name        string `json:"name"`
+	IPv4        bool   `json:"ipv4"`
+	IPv6        bool   `json:"ipv6"`
+	DefaultIPv4 bool   `json:"defaultIPv4"`
+	DefaultIPv6 bool   `json:"defaultIPv6"`
 }
 
 // GetNetworkInterfaces returns non-loopback, non-tunnel UP interfaces with IP version info.
@@ -202,6 +229,7 @@ func (s *AwgService) GetNetworkInterfaces() []NetworkInterface {
 		logger.Warning("Failed to list network interfaces:", err)
 		return nil
 	}
+	defaultIPv4Iface, defaultIPv6Iface := detectDefaultRouteInterfaces()
 
 	var result []NetworkInterface
 	for _, iface := range ifaces {
@@ -221,7 +249,11 @@ func (s *AwgService) GetNetworkInterfaces() []NetworkInterface {
 			continue
 		}
 
-		ni := NetworkInterface{Name: iface.Name}
+		ni := NetworkInterface{
+			Name:        iface.Name,
+			DefaultIPv4: iface.Name == defaultIPv4Iface,
+			DefaultIPv6: iface.Name == defaultIPv6Iface,
+		}
 		for _, addr := range addrs {
 			ipNet, ok := addr.(*net.IPNet)
 			if !ok {
@@ -248,11 +280,11 @@ func (s *AwgService) GetNetworkInterfaces() []NetworkInterface {
 func (s *AwgService) GetOnlineClients() []string {
 	db := database.GetDB()
 	threshold := time.Now().Add(-3 * time.Minute).UnixMilli()
-	var emails []string
+	var uuids []string
 	db.Model(&model.AwgClient{}).
 		Where("enable = ? AND last_online > ?", true, threshold).
-		Pluck("email", &emails)
-	return emails
+		Pluck("uuid", &uuids)
+	return uuids
 }
 
 // --- Clients ---
@@ -272,6 +304,16 @@ func (s *AwgService) GetClient(id int) (*model.AwgClient, error) {
 	db := database.GetDB()
 	var client model.AwgClient
 	if err := db.First(&client, id).Error; err != nil {
+		return nil, err
+	}
+	return &client, nil
+}
+
+// GetClientByUUID returns a single client by UUID.
+func (s *AwgService) GetClientByUUID(clientUUID string) (*model.AwgClient, error) {
+	db := database.GetDB()
+	var client model.AwgClient
+	if err := db.Where("uuid = ?", clientUUID).First(&client).Error; err != nil {
 		return nil, err
 	}
 	return &client, nil
@@ -406,6 +448,17 @@ func (s *AwgService) UpdateClient(client *model.AwgClient) error {
 	return nil
 }
 
+// UpdateClientByUUID updates an existing client located by UUID.
+func (s *AwgService) UpdateClientByUUID(clientUUID string, client *model.AwgClient) error {
+	existing, err := s.GetClientByUUID(clientUUID)
+	if err != nil {
+		return err
+	}
+	client.Id = existing.Id
+	client.UUID = existing.UUID
+	return s.UpdateClient(client)
+}
+
 // DeleteClient removes a client and cleans up NDP proxy if needed.
 func (s *AwgService) DeleteClient(id int) error {
 	client, err := s.GetClient(id)
@@ -434,6 +487,15 @@ func (s *AwgService) DeleteClient(id int) error {
 		}
 	}
 	return nil
+}
+
+// DeleteClientByUUID removes a client identified by UUID.
+func (s *AwgService) DeleteClientByUUID(clientUUID string) error {
+	client, err := s.GetClientByUUID(clientUUID)
+	if err != nil {
+		return err
+	}
+	return s.DeleteClient(client.Id)
 }
 
 // DeleteAllClients stops the AWG interface and removes all clients and the server record.
@@ -475,9 +537,32 @@ func (s *AwgService) ToggleClient(id int, enable bool) error {
 	return s.UpdateClient(client)
 }
 
+// ToggleClientByUUID enables or disables a client identified by UUID.
+func (s *AwgService) ToggleClientByUUID(clientUUID string, enable bool) error {
+	client, err := s.GetClientByUUID(clientUUID)
+	if err != nil {
+		return err
+	}
+	client.Enable = enable
+	return s.UpdateClient(client)
+}
+
 // GetClientConfig returns the text content of a client .conf file.
 func (s *AwgService) GetClientConfig(id int) (string, error) {
 	client, err := s.GetClient(id)
+	if err != nil {
+		return "", err
+	}
+	server, err := s.GetServer()
+	if err != nil {
+		return "", err
+	}
+	return awg.GenerateClientConfig(server, client), nil
+}
+
+// GetClientConfigByUUID returns config text for a client identified by UUID.
+func (s *AwgService) GetClientConfigByUUID(clientUUID string) (string, error) {
+	client, err := s.GetClientByUUID(clientUUID)
 	if err != nil {
 		return "", err
 	}
@@ -492,6 +577,15 @@ func (s *AwgService) GetClientConfig(id int) (string, error) {
 func (s *AwgService) ResetClientTraffic(id int) error {
 	db := database.GetDB()
 	return db.Model(&model.AwgClient{}).Where("id = ?", id).Updates(map[string]any{
+		"upload":   0,
+		"download": 0,
+	}).Error
+}
+
+// ResetClientTrafficByUUID resets traffic counters for a client identified by UUID.
+func (s *AwgService) ResetClientTrafficByUUID(clientUUID string) error {
+	db := database.GetDB()
+	return db.Model(&model.AwgClient{}).Where("uuid = ?", clientUUID).Updates(map[string]any{
 		"upload":   0,
 		"download": 0,
 	}).Error

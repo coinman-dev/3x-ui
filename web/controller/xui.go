@@ -26,7 +26,8 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 
 	g.GET("/", a.index)
 	g.GET("/inbounds", a.inbounds)
-	g.GET("/awg", a.awgPage)
+	g.GET("/wg", a.wgPage)
+	g.GET("/awg", a.wgPage) // legacy redirect: /awg → same WG settings page
 	g.GET("/settings", a.settings)
 	g.GET("/xray", a.xraySettings)
 
@@ -44,9 +45,11 @@ func (a *XUIController) inbounds(c *gin.Context) {
 	html(c, "inbounds.html", "pages.inbounds.title", nil)
 }
 
-// awgPage renders the AmneziaWG management page.
-func (a *XUIController) awgPage(c *gin.Context) {
-	html(c, "awg.html", "AmneziaWG", nil)
+// wgPage renders the combined WireGuard settings page (AWG + Native WG).
+func (a *XUIController) wgPage(c *gin.Context) {
+	html(c, "wg.html", "WireGuard", gin.H{
+		"active_wg_tab": "awg",
+	})
 }
 
 // settings renders the settings management page.

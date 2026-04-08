@@ -9,6 +9,7 @@ const Protocols = {
     WIREGUARD: 'wireguard',
     TUN: 'tun',
     AMNEZIAWG: 'amneziawg',
+    NATIVEWG: 'nativewg',
 };
 
 const SSMethods = {
@@ -1203,6 +1204,7 @@ class Inbound extends XrayCommonClass {
             case Protocols.TROJAN: return this.settings.trojans;
             case Protocols.SHADOWSOCKS: return this.isSSMultiUser ? this.settings.shadowsockses : null;
             case Protocols.AMNEZIAWG: return this.settings ? this.settings.clients : null;
+            case Protocols.NATIVEWG: return this.settings ? this.settings.clients : null;
             default: return null;
         }
     }
@@ -1830,6 +1832,7 @@ Inbound.Settings = class extends XrayCommonClass {
             case Protocols.WIREGUARD: return new Inbound.WireguardSettings(protocol);
             case Protocols.TUN: return new Inbound.TunSettings(protocol);
             case Protocols.AMNEZIAWG: return new Inbound.AmneziawgSettings(protocol, [new Inbound.AmneziawgSettings.AwgPeer()]);
+            case Protocols.NATIVEWG: return new Inbound.NativewgSettings(protocol, [new Inbound.NativewgSettings.WgPeer()]);
             default: return null;
         }
     }
@@ -1846,6 +1849,7 @@ Inbound.Settings = class extends XrayCommonClass {
             case Protocols.WIREGUARD: return Inbound.WireguardSettings.fromJson(json);
             case Protocols.TUN: return Inbound.TunSettings.fromJson(json);
             case Protocols.AMNEZIAWG: return Inbound.AmneziawgSettings.fromJson(json);
+            case Protocols.NATIVEWG: return Inbound.NativewgSettings.fromJson(json);
             default: return null;
         }
     }
@@ -2753,7 +2757,7 @@ Inbound.AmneziawgSettings.AwgPeer = class extends XrayCommonClass {
         this.email = email;
         this.enable = enable;
         this.comment = comment;
-        this._totalGB = totalGB;
+        this.totalGB = totalGB;
         this.expiryTime = expiryTime;
         this.reset = reset;
         this.subId = subId;
@@ -2775,6 +2779,14 @@ Inbound.AmneziawgSettings.AwgPeer = class extends XrayCommonClass {
         } else {
             this.expiryTime = t.valueOf();
         }
+    }
+
+    get _totalGB() {
+        return NumberFormatter.toFixed(this.totalGB / SizeFormatter.ONE_GB, 2);
+    }
+
+    set _totalGB(gb) {
+        this.totalGB = NumberFormatter.toFixed(gb * SizeFormatter.ONE_GB, 0);
     }
 
     static fromJson(json = {}) {
@@ -2801,13 +2813,121 @@ Inbound.AmneziawgSettings.AwgPeer = class extends XrayCommonClass {
             email: this.email,
             enable: this.enable,
             comment: this.comment,
-            totalGB: this._totalGB,
+            totalGB: this.totalGB,
             expiryTime: this.expiryTime,
             reset: this.reset,
             subId: this.subId,
             tgId: this.tgId,
             limitIp: this.limitIp,
             _awgId: this._awgId,
+            created_at: this.created_at,
+            updated_at: this.updated_at,
+        };
+    }
+};
+
+Inbound.NativewgSettings = class extends Inbound.Settings {
+    constructor(protocol, clients = []) {
+        super(protocol);
+        this.clients = clients;
+    }
+
+    static fromJson(json = {}) {
+        const clients = (json.clients || []).map(c => Inbound.NativewgSettings.WgPeer.fromJson(c));
+        return new Inbound.NativewgSettings(Protocols.NATIVEWG, clients);
+    }
+
+    toJson() {
+        return {
+            clients: this.clients.map(c => c.toJson()),
+        };
+    }
+};
+
+Inbound.NativewgSettings.WgPeer = class extends XrayCommonClass {
+    constructor(
+        id = RandomUtil.randomUUID(),
+        email = RandomUtil.randomLowerAndNum(9),
+        enable = true,
+        comment = '',
+        totalGB = 0,
+        expiryTime = 0,
+        reset = 0,
+        subId = '',
+        tgId = 0,
+        limitIp = 0,
+        _wgId = 0,
+        created_at = 0,
+        updated_at = 0,
+    ) {
+        super();
+        this.id = id;
+        this.email = email;
+        this.enable = enable;
+        this.comment = comment;
+        this.totalGB = totalGB;
+        this.expiryTime = expiryTime;
+        this.reset = reset;
+        this.subId = subId;
+        this.tgId = tgId;
+        this.limitIp = limitIp;
+        this._wgId = _wgId;
+        this.created_at = created_at;
+        this.updated_at = updated_at;
+    }
+
+    get _expiryTime() {
+        if (this.expiryTime === 0) return null;
+        return moment(this.expiryTime);
+    }
+
+    set _expiryTime(t) {
+        if (t == null) {
+            this.expiryTime = 0;
+        } else {
+            this.expiryTime = t.valueOf();
+        }
+    }
+
+    get _totalGB() {
+        return NumberFormatter.toFixed(this.totalGB / SizeFormatter.ONE_GB, 2);
+    }
+
+    set _totalGB(gb) {
+        this.totalGB = NumberFormatter.toFixed(gb * SizeFormatter.ONE_GB, 0);
+    }
+
+    static fromJson(json = {}) {
+        return new Inbound.NativewgSettings.WgPeer(
+            json.id || RandomUtil.randomUUID(),
+            json.email || '',
+            json.enable !== undefined ? json.enable : true,
+            json.comment || '',
+            json.totalGB || 0,
+            json.expiryTime || 0,
+            json.reset || 0,
+            json.subId || '',
+            json.tgId || 0,
+            json.limitIp || 0,
+            json._wgId || 0,
+            json.created_at || 0,
+            json.updated_at || 0,
+        );
+    }
+
+    toJson() {
+        return {
+            id: this.id,
+            email: this.email,
+            enable: this.enable,
+            comment: this.comment,
+            totalGB: this.totalGB,
+            expiryTime: this.expiryTime,
+            reset: this.reset,
+            subId: this.subId,
+            tgId: this.tgId,
+            limitIp: this.limitIp,
+            _wgId: this._wgId,
             created_at: this.created_at,
             updated_at: this.updated_at,
         };

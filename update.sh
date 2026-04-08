@@ -9,6 +9,14 @@ plain='\033[0m'
 xui_folder="${XUI_MAIN_FOLDER:=/usr/local/x-ui}"
 xui_service="${XUI_SERVICE:=/etc/systemd/system}"
 
+# Branch to fetch auxiliary files (x-ui.sh, service files) from.
+# --beta / --pre → dev branch; otherwise → main
+if [[ "$1" == "--beta" || "$1" == "--pre" ]]; then
+    REPO_BRANCH="dev"
+else
+    REPO_BRANCH="main"
+fi
+
 # Don't edit this config
 b_source="${BASH_SOURCE[0]}"
 while [ -h "$b_source" ]; do
@@ -746,6 +754,8 @@ config_after_update() {
 
 update_x-ui() {
     cd ${xui_folder%/x-ui}/
+    local xray_backup=""
+    local xray_backup_name=""
     
     if [ -f "${xui_folder}/x-ui" ]; then
         current_xui_version=$(${xui_folder}/x-ui -v)
@@ -755,16 +765,25 @@ update_x-ui() {
     fi
     
     echo -e "${green}Downloading new x-ui version...${plain}"
-    
-    tag_version=$(${curl_bin} -Ls "https://api.github.com/repos/coinman-dev/3ax-ui/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-    if [[ ! -n "$tag_version" ]]; then
-        echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
-        tag_version=$(${curl_bin} -4 -Ls "https://api.github.com/repos/coinman-dev/3ax-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+
+    if [[ "$1" == "--beta" || "$1" == "--pre" ]]; then
+        tag_version=$(${curl_bin} -Ls "https://api.github.com/repos/coinman-dev/3ax-ui/releases" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | head -1)
         if [[ ! -n "$tag_version" ]]; then
-            _fail "ERROR: Failed to fetch x-ui version, it may be due to GitHub API restrictions, please try it later"
+            echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
+            tag_version=$(${curl_bin} -4 -Ls "https://api.github.com/repos/coinman-dev/3ax-ui/releases" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | head -1)
         fi
+        echo -e "Got x-ui latest pre-release version: ${tag_version}, beginning the installation..."
+    else
+        tag_version=$(${curl_bin} -Ls "https://api.github.com/repos/coinman-dev/3ax-ui/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        if [[ ! -n "$tag_version" ]]; then
+            echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
+            tag_version=$(${curl_bin} -4 -Ls "https://api.github.com/repos/coinman-dev/3ax-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        fi
+        echo -e "Got x-ui latest version: ${tag_version}, beginning the installation..."
     fi
-    echo -e "Got x-ui latest version: ${tag_version}, beginning the installation..."
+    if [[ ! -n "$tag_version" ]]; then
+        _fail "ERROR: Failed to fetch x-ui version, it may be due to GitHub API restrictions, please try it later"
+    fi
     ${curl_bin} -fLRo ${xui_folder}-linux-$(arch).tar.gz https://github.com/coinman-dev/3ax-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz 2>/dev/null
     if [[ $? -ne 0 ]]; then
         echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
@@ -775,6 +794,21 @@ update_x-ui() {
     fi
     
     if [[ -e ${xui_folder}/ ]]; then
+        for candidate in "${xui_folder}"/bin/xray-linux-*; do
+            if [[ -f "$candidate" ]]; then
+                xray_backup_name=$(basename "$candidate")
+                xray_backup="/tmp/${xray_backup_name}.xui-update.$$"
+                if cp -f "$candidate" "$xray_backup" >/dev/null 2>&1; then
+                    echo -e "${green}Preserving existing Xray core binary: ${xray_backup_name}${plain}"
+                else
+                    xray_backup=""
+                    xray_backup_name=""
+                    echo -e "${yellow}Failed to preserve existing Xray core binary; bundled core may be used after update.${plain}"
+                fi
+                break
+            fi
+        done
+
         echo -e "${green}Stopping x-ui...${plain}"
         if [[ $release == "alpine" ]]; then
             if [ -f "/etc/init.d/x-ui" ]; then
@@ -828,13 +862,24 @@ update_x-ui() {
         chmod +x bin/xray-linux-arm >/dev/null 2>&1
     fi
     
-    chmod +x x-ui bin/xray-linux-$(arch) >/dev/null 2>&1
+    chmod +x x-ui >/dev/null 2>&1
+    [ -f bin/xray-linux-$(arch) ] && chmod +x bin/xray-linux-$(arch) >/dev/null 2>&1
+    if [[ -n "$xray_backup" && -n "$xray_backup_name" && -f "$xray_backup" ]]; then
+        cp -f "$xray_backup" "bin/${xray_backup_name}" >/dev/null 2>&1
+        if [[ $? -eq 0 ]]; then
+            chmod +x "bin/${xray_backup_name}" >/dev/null 2>&1
+            echo -e "${green}Restored existing Xray core binary: ${xray_backup_name}${plain}"
+        else
+            echo -e "${yellow}Failed to restore existing Xray core binary; using bundled version.${plain}"
+        fi
+        rm -f "$xray_backup" >/dev/null 2>&1
+    fi
     
     echo -e "${green}Downloading and installing x-ui.sh script...${plain}"
-    ${curl_bin} -fLRo /usr/bin/x-ui https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/x-ui.sh >/dev/null 2>&1
+    ${curl_bin} -fLRo /usr/bin/x-ui https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.sh >/dev/null 2>&1
     if [[ $? -ne 0 ]]; then
         echo -e "${yellow}Trying to fetch x-ui with IPv4...${plain}"
-        ${curl_bin} -4fLRo /usr/bin/x-ui https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/x-ui.sh >/dev/null 2>&1
+        ${curl_bin} -4fLRo /usr/bin/x-ui https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.sh >/dev/null 2>&1
         if [[ $? -ne 0 ]]; then
             _fail "ERROR: Failed to download x-ui.sh script, please be sure that your server can access GitHub"
         fi
@@ -854,9 +899,9 @@ update_x-ui() {
     
     if [[ $release == "alpine" ]]; then
         echo -e "${green}Downloading and installing startup unit x-ui.rc...${plain}"
-        ${curl_bin} -fLRo /etc/init.d/x-ui https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/x-ui.rc >/dev/null 2>&1
+        ${curl_bin} -fLRo /etc/init.d/x-ui https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.rc >/dev/null 2>&1
         if [[ $? -ne 0 ]]; then
-            ${curl_bin} -4fLRo /etc/init.d/x-ui https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/x-ui.rc >/dev/null 2>&1
+            ${curl_bin} -4fLRo /etc/init.d/x-ui https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.rc >/dev/null 2>&1
             if [[ $? -ne 0 ]]; then
                 _fail "ERROR: Failed to download startup unit x-ui.rc, please be sure that your server can access GitHub"
             fi
@@ -910,13 +955,13 @@ update_x-ui() {
                 echo -e "${yellow}Service files not found in tar.gz, downloading from GitHub...${plain}"
                 case "${release}" in
                     ubuntu | debian | armbian)
-                        ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/x-ui.service.debian >/dev/null 2>&1
+                        ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.service.debian >/dev/null 2>&1
                     ;;
                     arch | manjaro | parch)
-                        ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/x-ui.service.arch >/dev/null 2>&1
+                        ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.service.arch >/dev/null 2>&1
                     ;;
                     *)
-                        ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/x-ui.service.rhel >/dev/null 2>&1
+                        ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.service.rhel >/dev/null 2>&1
                     ;;
                 esac
                 
@@ -957,6 +1002,30 @@ update_x-ui() {
 └───────────────────────────────────────────────────────┘"
 }
 
+ensure_wireguard_native() {
+    if command -v wg &>/dev/null; then
+        modprobe wireguard 2>/dev/null || true
+        return
+    fi
+    echo -e "${yellow}wireguard-tools not found, installing...${plain}"
+    case "${release}" in
+        ubuntu | debian | armbian)
+            apt-get install -y -q wireguard-tools 2>/dev/null || true
+            ;;
+        fedora | amzn | rhel | almalinux | rocky | ol | centos)
+            dnf install -y wireguard-tools 2>/dev/null || yum install -y wireguard-tools 2>/dev/null || true
+            ;;
+        arch | manjaro | parch)
+            pacman -Syu --noconfirm wireguard-tools 2>/dev/null || true
+            ;;
+        alpine)
+            apk add wireguard-tools 2>/dev/null || true
+            ;;
+    esac
+    modprobe wireguard 2>/dev/null || true
+}
+
 echo -e "${green}Running...${plain}"
 install_base
+ensure_wireguard_native
 update_x-ui $1

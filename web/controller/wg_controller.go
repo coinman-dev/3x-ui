@@ -10,17 +10,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type AwgController struct {
-	awgService service.AwgService
+type WgController struct {
+	wgService service.WgService
 }
 
-func NewAwgController(g *gin.RouterGroup) *AwgController {
-	a := &AwgController{}
+func NewWgController(g *gin.RouterGroup) *WgController {
+	a := &WgController{}
 	a.initRouter(g)
 	return a
 }
 
-func (a *AwgController) initRouter(g *gin.RouterGroup) {
+func (a *WgController) initRouter(g *gin.RouterGroup) {
 	g.GET("/server", a.getServer)
 	g.POST("/server", a.saveServer)
 	g.POST("/server/toggle", a.toggleServer)
@@ -43,26 +43,26 @@ func (a *AwgController) initRouter(g *gin.RouterGroup) {
 	g.POST("/client/resetTrafficByUuid/:uuid", a.resetClientTrafficByUUID)
 }
 
-func (a *AwgController) getServer(c *gin.Context) {
-	server, err := a.awgService.GetServer()
+func (a *WgController) getServer(c *gin.Context) {
+	server, err := a.wgService.GetServer()
 	if err != nil {
-		jsonMsg(c, "get AWG server", err)
+		jsonMsg(c, "get WG server", err)
 		return
 	}
 	jsonObj(c, server, nil)
 }
 
-func (a *AwgController) saveServer(c *gin.Context) {
-	var server model.AwgServer
+func (a *WgController) saveServer(c *gin.Context) {
+	var server model.WgServer
 	if err := c.ShouldBindJSON(&server); err != nil {
 		jsonMsg(c, "invalid request", err)
 		return
 	}
-	err := a.awgService.SaveServer(&server)
-	jsonMsg(c, "AWG server settings saved", err)
+	err := a.wgService.SaveServer(&server)
+	jsonMsg(c, "WG server settings saved", err)
 }
 
-func (a *AwgController) toggleServer(c *gin.Context) {
+func (a *WgController) toggleServer(c *gin.Context) {
 	var body struct {
 		Enable bool `json:"enable"`
 	}
@@ -70,108 +70,108 @@ func (a *AwgController) toggleServer(c *gin.Context) {
 		jsonMsg(c, "invalid request", err)
 		return
 	}
-	err := a.awgService.ToggleServer(body.Enable)
+	err := a.wgService.ToggleServer(body.Enable)
 	if body.Enable {
-		jsonMsg(c, I18nWeb(c, "pages.awg.restartSuccess"), err)
+		jsonMsg(c, I18nWeb(c, "pages.nativewg.restartSuccess"), err)
 		return
 	}
-	jsonMsg(c, I18nWeb(c, "pages.awg.stopSuccess"), err)
+	jsonMsg(c, I18nWeb(c, "pages.nativewg.stopSuccess"), err)
 }
 
-func (a *AwgController) resetServer(c *gin.Context) {
-	server, err := a.awgService.ResetToDefaults()
+func (a *WgController) resetServer(c *gin.Context) {
+	server, err := a.wgService.ResetToDefaults()
 	if err != nil {
-		jsonMsg(c, "reset AWG server", err)
+		jsonMsg(c, "reset WG server", err)
 		return
 	}
 	jsonObj(c, server, nil)
 }
 
-func (a *AwgController) getServerStatus(c *gin.Context) {
-	status := a.awgService.GetServerStatus()
+func (a *WgController) getServerStatus(c *gin.Context) {
+	status := a.wgService.GetServerStatus()
 	jsonObj(c, status, nil)
 }
 
-func (a *AwgController) getInterfaces(c *gin.Context) {
-	ifaces := a.awgService.GetNetworkInterfaces()
+func (a *WgController) getInterfaces(c *gin.Context) {
+	ifaces := a.wgService.GetNetworkInterfaces()
 	jsonObj(c, ifaces, nil)
 }
 
-func (a *AwgController) getClients(c *gin.Context) {
-	clients, err := a.awgService.GetClients()
+func (a *WgController) getClients(c *gin.Context) {
+	clients, err := a.wgService.GetClients()
 	if err != nil {
-		jsonMsg(c, "get AWG clients", err)
+		jsonMsg(c, "get WG clients", err)
 		return
 	}
 	jsonObj(c, clients, nil)
 }
 
-func (a *AwgController) addClient(c *gin.Context) {
-	var client model.AwgClient
+func (a *WgController) addClient(c *gin.Context) {
+	var client model.WgClient
 	if err := c.ShouldBindJSON(&client); err != nil {
 		jsonMsg(c, "invalid request", err)
 		return
 	}
-	err := a.awgService.AddClient(&client)
+	err := a.wgService.AddClient(&client)
 	if err != nil {
-		jsonMsg(c, "add AWG client", err)
+		jsonMsg(c, "add WG client", err)
 		return
 	}
 	jsonObj(c, client, nil)
 }
 
-func (a *AwgController) updateClient(c *gin.Context) {
+func (a *WgController) updateClient(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		jsonMsg(c, "invalid id", err)
 		return
 	}
-	var client model.AwgClient
+	var client model.WgClient
 	if err := c.ShouldBindJSON(&client); err != nil {
 		jsonMsg(c, "invalid request", err)
 		return
 	}
 	client.Id = id
-	err = a.awgService.UpdateClient(&client)
-	jsonMsg(c, "AWG client updated", err)
+	err = a.wgService.UpdateClient(&client)
+	jsonMsg(c, "WG client updated", err)
 }
 
-func (a *AwgController) updateClientByUUID(c *gin.Context) {
+func (a *WgController) updateClientByUUID(c *gin.Context) {
 	clientUUID := c.Param("uuid")
 	if clientUUID == "" {
 		jsonMsg(c, "invalid uuid", errors.New("missing uuid"))
 		return
 	}
-	var client model.AwgClient
+	var client model.WgClient
 	if err := c.ShouldBindJSON(&client); err != nil {
 		jsonMsg(c, "invalid request", err)
 		return
 	}
-	err := a.awgService.UpdateClientByUUID(clientUUID, &client)
-	jsonMsg(c, "AWG client updated", err)
+	err := a.wgService.UpdateClientByUUID(clientUUID, &client)
+	jsonMsg(c, "WG client updated", err)
 }
 
-func (a *AwgController) deleteClient(c *gin.Context) {
+func (a *WgController) deleteClient(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		jsonMsg(c, "invalid id", err)
 		return
 	}
-	err = a.awgService.DeleteClient(id)
-	jsonMsg(c, "AWG client deleted", err)
+	err = a.wgService.DeleteClient(id)
+	jsonMsg(c, "WG client deleted", err)
 }
 
-func (a *AwgController) deleteClientByUUID(c *gin.Context) {
+func (a *WgController) deleteClientByUUID(c *gin.Context) {
 	clientUUID := c.Param("uuid")
 	if clientUUID == "" {
 		jsonMsg(c, "invalid uuid", errors.New("missing uuid"))
 		return
 	}
-	err := a.awgService.DeleteClientByUUID(clientUUID)
-	jsonMsg(c, "AWG client deleted", err)
+	err := a.wgService.DeleteClientByUUID(clientUUID)
+	jsonMsg(c, "WG client deleted", err)
 }
 
-func (a *AwgController) toggleClient(c *gin.Context) {
+func (a *WgController) toggleClient(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		jsonMsg(c, "invalid id", err)
@@ -184,11 +184,11 @@ func (a *AwgController) toggleClient(c *gin.Context) {
 		jsonMsg(c, "invalid request", err)
 		return
 	}
-	err = a.awgService.ToggleClient(id, body.Enable)
-	jsonMsg(c, "AWG client toggled", err)
+	err = a.wgService.ToggleClient(id, body.Enable)
+	jsonMsg(c, "WG client toggled", err)
 }
 
-func (a *AwgController) toggleClientByUUID(c *gin.Context) {
+func (a *WgController) toggleClientByUUID(c *gin.Context) {
 	clientUUID := c.Param("uuid")
 	if clientUUID == "" {
 		jsonMsg(c, "invalid uuid", errors.New("missing uuid"))
@@ -201,17 +201,17 @@ func (a *AwgController) toggleClientByUUID(c *gin.Context) {
 		jsonMsg(c, "invalid request", err)
 		return
 	}
-	err := a.awgService.ToggleClientByUUID(clientUUID, body.Enable)
-	jsonMsg(c, "AWG client toggled", err)
+	err := a.wgService.ToggleClientByUUID(clientUUID, body.Enable)
+	jsonMsg(c, "WG client toggled", err)
 }
 
-func (a *AwgController) getClientConfig(c *gin.Context) {
+func (a *WgController) getClientConfig(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		jsonMsg(c, "invalid id", err)
 		return
 	}
-	config, err := a.awgService.GetClientConfig(id)
+	config, err := a.wgService.GetClientConfig(id)
 	if err != nil {
 		jsonMsg(c, "get client config", err)
 		return
@@ -219,13 +219,13 @@ func (a *AwgController) getClientConfig(c *gin.Context) {
 	jsonObj(c, config, nil)
 }
 
-func (a *AwgController) getClientConfigByUUID(c *gin.Context) {
+func (a *WgController) getClientConfigByUUID(c *gin.Context) {
 	clientUUID := c.Param("uuid")
 	if clientUUID == "" {
 		jsonMsg(c, "invalid uuid", errors.New("missing uuid"))
 		return
 	}
-	config, err := a.awgService.GetClientConfigByUUID(clientUUID)
+	config, err := a.wgService.GetClientConfigByUUID(clientUUID)
 	if err != nil {
 		jsonMsg(c, "get client config", err)
 		return
@@ -233,22 +233,22 @@ func (a *AwgController) getClientConfigByUUID(c *gin.Context) {
 	jsonObj(c, config, nil)
 }
 
-func (a *AwgController) resetClientTraffic(c *gin.Context) {
+func (a *WgController) resetClientTraffic(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		jsonMsg(c, "invalid id", err)
 		return
 	}
-	err = a.awgService.ResetClientTraffic(id)
-	jsonMsg(c, "AWG client traffic reset", err)
+	err = a.wgService.ResetClientTraffic(id)
+	jsonMsg(c, "WG client traffic reset", err)
 }
 
-func (a *AwgController) resetClientTrafficByUUID(c *gin.Context) {
+func (a *WgController) resetClientTrafficByUUID(c *gin.Context) {
 	clientUUID := c.Param("uuid")
 	if clientUUID == "" {
 		jsonMsg(c, "invalid uuid", errors.New("missing uuid"))
 		return
 	}
-	err := a.awgService.ResetClientTrafficByUUID(clientUUID)
-	jsonMsg(c, "AWG client traffic reset", err)
+	err := a.wgService.ResetClientTrafficByUUID(clientUUID)
+	jsonMsg(c, "WG client traffic reset", err)
 }

@@ -130,8 +130,12 @@ bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/inst
 # Последняя pre-release версия
 bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/install.sh) --beta
 
-# Конкретная версия
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/install.sh) v1.0.0
+```
+
+## Обновление панели
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/update.sh)
 ```
 
 ---

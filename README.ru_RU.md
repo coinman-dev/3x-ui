@@ -26,12 +26,6 @@
 bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/install.sh)
 ```
 
-Для установки последней pre-release версии:
-
-```bash
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/install.sh) --beta
-```
-
 ---
 
 ## Зачем эта панель?

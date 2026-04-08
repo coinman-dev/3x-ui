@@ -754,6 +754,8 @@ config_after_update() {
 
 update_x-ui() {
     cd ${xui_folder%/x-ui}/
+    local xray_backup=""
+    local xray_backup_name=""
     
     if [ -f "${xui_folder}/x-ui" ]; then
         current_xui_version=$(${xui_folder}/x-ui -v)
@@ -792,6 +794,21 @@ update_x-ui() {
     fi
     
     if [[ -e ${xui_folder}/ ]]; then
+        for candidate in "${xui_folder}"/bin/xray-linux-*; do
+            if [[ -f "$candidate" ]]; then
+                xray_backup_name=$(basename "$candidate")
+                xray_backup="/tmp/${xray_backup_name}.xui-update.$$"
+                if cp -f "$candidate" "$xray_backup" >/dev/null 2>&1; then
+                    echo -e "${green}Preserving existing Xray core binary: ${xray_backup_name}${plain}"
+                else
+                    xray_backup=""
+                    xray_backup_name=""
+                    echo -e "${yellow}Failed to preserve existing Xray core binary; bundled core may be used after update.${plain}"
+                fi
+                break
+            fi
+        done
+
         echo -e "${green}Stopping x-ui...${plain}"
         if [[ $release == "alpine" ]]; then
             if [ -f "/etc/init.d/x-ui" ]; then
@@ -847,6 +864,16 @@ update_x-ui() {
     
     chmod +x x-ui >/dev/null 2>&1
     [ -f bin/xray-linux-$(arch) ] && chmod +x bin/xray-linux-$(arch) >/dev/null 2>&1
+    if [[ -n "$xray_backup" && -n "$xray_backup_name" && -f "$xray_backup" ]]; then
+        cp -f "$xray_backup" "bin/${xray_backup_name}" >/dev/null 2>&1
+        if [[ $? -eq 0 ]]; then
+            chmod +x "bin/${xray_backup_name}" >/dev/null 2>&1
+            echo -e "${green}Restored existing Xray core binary: ${xray_backup_name}${plain}"
+        else
+            echo -e "${yellow}Failed to restore existing Xray core binary; using bundled version.${plain}"
+        fi
+        rm -f "$xray_backup" >/dev/null 2>&1
+    fi
     
     echo -e "${green}Downloading and installing x-ui.sh script...${plain}"
     ${curl_bin} -fLRo /usr/bin/x-ui https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.sh >/dev/null 2>&1

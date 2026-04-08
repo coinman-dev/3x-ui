@@ -1,5 +1,8 @@
 {{ template "page/head_start" .}}
 <style>
+  .index-page {
+    --protocol-card-radius: 1.5rem;
+  }
   .index-page .protocol-card .ant-card-body {
     padding: 0;
   }
@@ -28,10 +31,10 @@
     background: rgba(0, 135, 113, 0.08);
   }
   .index-page .protocol-switcher-item.active:first-child {
-    border-top-left-radius: 12px;
+    border-top-left-radius: var(--protocol-card-radius);
   }
   .index-page .protocol-switcher-item.active:last-child {
-    border-top-right-radius: 12px;
+    border-top-right-radius: var(--protocol-card-radius);
   }
   .index-page .protocol-switcher-name {
     font-size: 15px;
@@ -102,12 +105,12 @@
       border-top: 1px solid rgba(0, 0, 0, 0.09);
     }
     .index-page .protocol-switcher-item.active:first-child {
-      border-top-right-radius: 12px;
+      border-top-right-radius: var(--protocol-card-radius);
     }
     .index-page .protocol-switcher-item.active:last-child {
       border-top-right-radius: 0;
-      border-bottom-left-radius: 12px;
-      border-bottom-right-radius: 12px;
+      border-bottom-left-radius: var(--protocol-card-radius);
+      border-bottom-right-radius: var(--protocol-card-radius);
     }
     .index-page.dark .protocol-switcher-item + .protocol-switcher-item {
       border-top-color: rgba(255, 255, 255, 0.1);
@@ -234,7 +237,7 @@
                       <a-icon type="bars"></a-icon>
                       <span v-if="!isMobile">{{ i18n "pages.index.panelLogs" }}</span>
                     </a-space>
-                    <a-space direction="horizontal" @click="openXrayLogs()" class="jc-center">
+                    <a-space v-if="ipLimitEnable" direction="horizontal" @click="openXrayLogs()" class="jc-center">
                       <a-icon type="bars"></a-icon>
                       <span v-if="!isMobile">{{ i18n "pages.index.xrayLogs" }}</span>
                     </a-space>

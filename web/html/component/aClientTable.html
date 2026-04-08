@@ -3,7 +3,7 @@
   <a-tooltip>
     <template slot="title">{{ i18n "qrCode" }}</template>
     <a-icon :style="{ fontSize: '22px', marginInlineStart: '14px' }" class="normal-icon" type="qrcode"
-      v-if="record.hasLink() || record.isAmneziawg"
+      v-if="record.hasLink() || record.isAmneziawg || record.isNativewg"
       @click="showQrcode(record.id,client);"></a-icon>
   </a-tooltip>
   <a-tooltip>
@@ -18,7 +18,7 @@
     <template slot="title">{{ i18n "pages.inbounds.resetTraffic" }}</template>
     <a-popconfirm @confirm="resetClientTraffic(client,record.id,false)" title='{{ i18n "pages.inbounds.resetTrafficContent"}}' :overlay-class-name="themeSwitcher.currentTheme" ok-text='{{ i18n "reset"}}' cancel-text='{{ i18n "cancel"}}'>
       <a-icon slot="icon" type="question-circle-o" :style="{ color: 'var(--color-primary-100)'}"></a-icon>
-      <a-icon :style="{ fontSize: '22px', cursor: 'pointer' }" class="normal-icon" type="retweet" v-if="client.email.length > 0"></a-icon>
+      <a-icon :style="{ fontSize: '22px', cursor: 'pointer' }" class="normal-icon" type="retweet" v-if="getClientLookupKey(record.protocol, client).length > 0"></a-icon>
     </a-popconfirm>
   </a-tooltip>
   <a-tooltip>
@@ -37,9 +37,9 @@
 <template slot="online" slot-scope="text, client, index">
   <a-popover :overlay-class-name="themeSwitcher.currentTheme">
     <template slot="content" >
-      {{ i18n "lastOnline" }}: [[ formatLastOnline(record.protocol === 'amneziawg' ? client.id : client.email) ]]
+      {{ i18n "lastOnline" }}: [[ formatLastOnline(getClientLookupKey(record.protocol, client)) ]]
     </template>
-    <template v-if="client.enable && isClientOnline(record.protocol === 'amneziawg' ? client.id : client.email, record.protocol)">
+    <template v-if="client.enable && isClientOnline(getClientLookupKey(record.protocol, client), record.protocol)">
       <a-tag color="green">{{ i18n "online" }}</a-tag>
     </template>
     <template v-else>
@@ -51,11 +51,11 @@
   <a-space direction="horizontal" :size="2">
     <a-tooltip>
       <template slot="title">
-        <template v-if="isClientDepleted(record, client.email)">{{ i18n "depleted" }}</template>
+        <template v-if="isClientDepleted(record, getClientLookupKey(record.protocol, client))">{{ i18n "depleted" }}</template>
         <template v-else-if="!client.enable">{{ i18n "disabled" }}</template>
-        <template v-else-if="client.enable && isClientOnline(record.protocol === 'amneziawg' ? client.id : client.email, record.protocol)">{{ i18n "online" }}</template>
+        <template v-else-if="client.enable && isClientOnline(getClientLookupKey(record.protocol, client), record.protocol)">{{ i18n "online" }}</template>
       </template>
-      <a-badge :class="isClientOnline(record.protocol === 'amneziawg' ? client.id : client.email, record.protocol)? 'online-animation' : ''" :color="client.enable ? statsExpColor(record, client.email) : themeSwitcher.isDarkTheme ? '#2c3950' : '#bcbcbc'"></a-badge>
+      <a-badge :class="isClientOnline(getClientLookupKey(record.protocol, client), record.protocol)? 'online-animation' : ''" :color="client.enable ? statsExpColor(record, getClientLookupKey(record.protocol, client)) : themeSwitcher.isDarkTheme ? '#2c3950' : '#bcbcbc'"></a-badge>
     </a-tooltip>
     <a-space direction="vertical" :size="2">
       <span class="client-email">[[ client.email ]]</span>
@@ -76,23 +76,23 @@
     <template slot="content" v-if="client.email">
       <table cellpadding="2" width="100%">
         <tr>
-          <td>↑[[ SizeFormatter.sizeFormat(getUpStats(record, client.email)) ]]</td>
-          <td>↓[[ SizeFormatter.sizeFormat(getDownStats(record, client.email)) ]]</td>
+          <td>↑[[ SizeFormatter.sizeFormat(getUpStats(record, getClientLookupKey(record.protocol, client))) ]]</td>
+          <td>↓[[ SizeFormatter.sizeFormat(getDownStats(record, getClientLookupKey(record.protocol, client))) ]]</td>
         </tr>
         <tr v-if="client.totalGB > 0">
           <td>{{ i18n "remained" }}</td>
-          <td>[[ SizeFormatter.sizeFormat(getRemStats(record, client.email)) ]]</td>
+          <td>[[ SizeFormatter.sizeFormat(getRemStats(record, getClientLookupKey(record.protocol, client))) ]]</td>
         </tr>
       </table>
     </template>
     <table>
       <tr class="tr-table-box">
-        <td class="tr-table-rt"> [[ SizeFormatter.sizeFormat(getSumStats(record, client.email)) ]] </td>
+        <td class="tr-table-rt"> [[ SizeFormatter.sizeFormat(getSumStats(record, getClientLookupKey(record.protocol, client))) ]] </td>
         <td class="tr-table-bar" v-if="!client.enable">
-          <a-progress :stroke-color="themeSwitcher.isDarkTheme ? 'rgb(72 84 105)' : '#bcbcbc'" :show-info="false" :percent="statsProgress(record, client.email)" />
+          <a-progress :stroke-color="themeSwitcher.isDarkTheme ? 'rgb(72 84 105)' : '#bcbcbc'" :show-info="false" :percent="statsProgress(record, getClientLookupKey(record.protocol, client))" />
         </td>
         <td class="tr-table-bar" v-else-if="client.totalGB > 0">
-          <a-progress :stroke-color="clientStatsColor(record, client.email)" :show-info="false" :status="isClientDepleted(record, client.email)? 'exception' : ''" :percent="statsProgress(record, client.email)" />
+          <a-progress :stroke-color="clientStatsColor(record, getClientLookupKey(record.protocol, client))" :show-info="false" :status="isClientDepleted(record, getClientLookupKey(record.protocol, client))? 'exception' : ''" :percent="statsProgress(record, getClientLookupKey(record.protocol, client))" />
         </td>
         <td v-else class="infinite-bar tr-table-bar">
           <a-progress :show-info="false" :percent="100"></a-progress>
@@ -107,7 +107,7 @@
 </template>
 
 <template slot="allTime" slot-scope="text, client">
-  <a-tag>[[ SizeFormatter.sizeFormat(getAllTimeClient(record, client.email)) ]]</a-tag>
+  <a-tag>[[ SizeFormatter.sizeFormat(getAllTimeClient(record, getClientLookupKey(record.protocol, client))) ]]</a-tag>
 </template>
 <template slot="expiryTime" slot-scope="text, client, index">
   <template v-if="client.expiryTime !=0 && client.reset >0">
@@ -120,7 +120,7 @@
         <tr class="tr-table-box">
           <td class="tr-table-rt"> [[ IntlUtil.formatRelativeTime(client.expiryTime) ]] </td>
           <td class="infinite-bar tr-table-bar">
-            <a-progress :show-info="false" :status="isClientDepleted(record, client.email)? 'exception' : ''" :percent="expireProgress(client.expiryTime, client.reset)" />
+            <a-progress :show-info="false" :status="isClientDepleted(record, getClientLookupKey(record.protocol, client))? 'exception' : ''" :percent="expireProgress(client.expiryTime, client.reset)" />
           </td>
           <td class="tr-table-lt">[[ client.reset + "d" ]]</td>
         </tr>
@@ -146,8 +146,8 @@
   <a-dropdown :trigger="['click']">
     <a-icon @click="e => e.preventDefault()" type="ellipsis" :style="{ fontSize: '20px' }"></a-icon>
     <a-menu slot="overlay" :theme="themeSwitcher.currentTheme">
-      <a-menu-item v-if="record.hasLink() || record.isAmneziawg"
-        @click="record.isAmneziawg ? showInfo(record.id,client) : showQrcode(record.id,client);">
+      <a-menu-item v-if="record.hasLink() || record.isAmneziawg || record.isNativewg"
+        @click="record.isAmneziawg || record.isNativewg ? showInfo(record.id,client) : showQrcode(record.id,client);">
         <a-icon :style="{ fontSize: '14px' }" type="qrcode"></a-icon>
         {{ i18n "qrCode" }}
       </a-menu-item>
@@ -159,7 +159,7 @@
         <a-icon :style="{ fontSize: '14px' }" type="info-circle"></a-icon>
         {{ i18n "info" }}
       </a-menu-item>
-      <a-menu-item @click="resetClientTraffic(client,record.id)" v-if="client.email.length > 0">
+      <a-menu-item @click="resetClientTraffic(client,record.id)" v-if="getClientLookupKey(record.protocol, client).length > 0">
         <a-icon :style="{ fontSize: '14px' }" type="retweet"></a-icon>
         {{ i18n "pages.inbounds.resetTraffic" }}
       </a-menu-item>
@@ -182,25 +182,25 @@
           <td colspan="3" :style="{ textAlign: 'center' }">{{ i18n "pages.inbounds.traffic" }}</td>
         </tr>
         <tr>
-          <td width="80px" :style="{ margin: '0', textAlign: 'right', fontSize: '1em' }"> [[ SizeFormatter.sizeFormat(getUpStats(record, client.email) + getDownStats(record, client.email)) ]] </td>
+          <td width="80px" :style="{ margin: '0', textAlign: 'right', fontSize: '1em' }"> [[ SizeFormatter.sizeFormat(getUpStats(record, getClientLookupKey(record.protocol, client)) + getDownStats(record, getClientLookupKey(record.protocol, client))) ]] </td>
           <td width="120px" v-if="!client.enable">
-            <a-progress :stroke-color="themeSwitcher.isDarkTheme ? 'rgb(72 84 105)' : '#bcbcbc'" :show-info="false" :percent="statsProgress(record, client.email)" />
+            <a-progress :stroke-color="themeSwitcher.isDarkTheme ? 'rgb(72 84 105)' : '#bcbcbc'" :show-info="false" :percent="statsProgress(record, getClientLookupKey(record.protocol, client))" />
           </td>
           <td width="120px" v-else-if="client.totalGB > 0">
             <a-popover :overlay-class-name="themeSwitcher.currentTheme">
               <template slot="content" v-if="client.email">
                 <table cellpadding="2" width="100%">
                   <tr>
-                    <td>↑[[ SizeFormatter.sizeFormat(getUpStats(record, client.email)) ]]</td>
-                    <td>↓[[ SizeFormatter.sizeFormat(getDownStats(record, client.email)) ]]</td>
+                    <td>↑[[ SizeFormatter.sizeFormat(getUpStats(record, getClientLookupKey(record.protocol, client))) ]]</td>
+                    <td>↓[[ SizeFormatter.sizeFormat(getDownStats(record, getClientLookupKey(record.protocol, client))) ]]</td>
                   </tr>
                   <tr>
                     <td>{{ i18n "remained" }}</td>
-                    <td>[[ SizeFormatter.sizeFormat(getRemStats(record, client.email)) ]]</td>
+                    <td>[[ SizeFormatter.sizeFormat(getRemStats(record, getClientLookupKey(record.protocol, client))) ]]</td>
                   </tr>
                 </table>
               </template>
-              <a-progress :stroke-color="clientStatsColor(record, client.email)" :show-info="false" :status="isClientDepleted(record, client.email)? 'exception' : ''" :percent="statsProgress(record, client.email)" />
+              <a-progress :stroke-color="clientStatsColor(record, getClientLookupKey(record.protocol, client))" :show-info="false" :status="isClientDepleted(record, getClientLookupKey(record.protocol, client))? 'exception' : ''" :percent="statsProgress(record, getClientLookupKey(record.protocol, client))" />
             </a-popover>
           </td>
           <td width="120px" v-else class="infinite-bar">
@@ -226,7 +226,7 @@
                   <span v-if="client.expiryTime < 0">{{ i18n "pages.client.delayedStart" }}</span>
                   <span v-else>[[ IntlUtil.formatDate(client.expiryTime) ]]</span>
                 </template>
-                <a-progress :show-info="false" :status="isClientDepleted(record, client.email)? 'exception' : ''" :percent="expireProgress(client.expiryTime, client.reset)" />
+                <a-progress :show-info="false" :status="isClientDepleted(record, getClientLookupKey(record.protocol, client))? 'exception' : ''" :percent="expireProgress(client.expiryTime, client.reset)" />
               </a-popover>
             </td>
             <td width="60px">[[ client.reset + "d" ]]</td>

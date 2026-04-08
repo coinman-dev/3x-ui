@@ -585,8 +585,8 @@ prompt_and_setup_ssl() {
             | grep -oP 'inet6\s+\K[0-9a-f:]+(?=/\d+)' | grep -v '^fe80' | head -1)
         if [[ -n "$detected_ipv6" ]]; then
             echo -e "${green}IPv6 address detected: ${detected_ipv6}${plain}"
-            read -rp "Include it in the certificate? (y/n, default: n): " ipv6_choice
-            if [[ "${ipv6_choice,,}" == "y" ]]; then
+            read -rp "Include it in the certificate? (Y/n, default: y): " ipv6_choice
+            if [[ -z "${ipv6_choice}" || "${ipv6_choice,,}" == "y" ]]; then
                 ipv6_addr="$detected_ipv6"
             fi
         fi

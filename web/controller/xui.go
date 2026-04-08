@@ -47,7 +47,13 @@ func (a *XUIController) inbounds(c *gin.Context) {
 
 // wgPage renders the combined WireGuard settings page (AWG + Native WG).
 func (a *XUIController) wgPage(c *gin.Context) {
-	html(c, "wg.html", "WireGuard", nil)
+	activeTab := "awg"
+	if c.Request.URL.Path == c.GetString("base_path")+"panel/wg" || c.Request.URL.Path == "/panel/wg" {
+		activeTab = "wg"
+	}
+	html(c, "wg.html", "WireGuard", gin.H{
+		"active_wg_tab": activeTab,
+	})
 }
 
 // settings renders the settings management page.

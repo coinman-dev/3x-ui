@@ -248,11 +248,11 @@ func (s *AwgService) GetNetworkInterfaces() []NetworkInterface {
 func (s *AwgService) GetOnlineClients() []string {
 	db := database.GetDB()
 	threshold := time.Now().Add(-3 * time.Minute).UnixMilli()
-	var emails []string
+	var uuids []string
 	db.Model(&model.AwgClient{}).
 		Where("enable = ? AND last_online > ?", true, threshold).
-		Pluck("email", &emails)
-	return emails
+		Pluck("uuid", &uuids)
+	return uuids
 }
 
 // --- Clients ---
@@ -272,6 +272,16 @@ func (s *AwgService) GetClient(id int) (*model.AwgClient, error) {
 	db := database.GetDB()
 	var client model.AwgClient
 	if err := db.First(&client, id).Error; err != nil {
+		return nil, err
+	}
+	return &client, nil
+}
+
+// GetClientByUUID returns a single client by UUID.
+func (s *AwgService) GetClientByUUID(clientUUID string) (*model.AwgClient, error) {
+	db := database.GetDB()
+	var client model.AwgClient
+	if err := db.Where("uuid = ?", clientUUID).First(&client).Error; err != nil {
 		return nil, err
 	}
 	return &client, nil
@@ -406,6 +416,17 @@ func (s *AwgService) UpdateClient(client *model.AwgClient) error {
 	return nil
 }
 
+// UpdateClientByUUID updates an existing client located by UUID.
+func (s *AwgService) UpdateClientByUUID(clientUUID string, client *model.AwgClient) error {
+	existing, err := s.GetClientByUUID(clientUUID)
+	if err != nil {
+		return err
+	}
+	client.Id = existing.Id
+	client.UUID = existing.UUID
+	return s.UpdateClient(client)
+}
+
 // DeleteClient removes a client and cleans up NDP proxy if needed.
 func (s *AwgService) DeleteClient(id int) error {
 	client, err := s.GetClient(id)
@@ -434,6 +455,15 @@ func (s *AwgService) DeleteClient(id int) error {
 		}
 	}
 	return nil
+}
+
+// DeleteClientByUUID removes a client identified by UUID.
+func (s *AwgService) DeleteClientByUUID(clientUUID string) error {
+	client, err := s.GetClientByUUID(clientUUID)
+	if err != nil {
+		return err
+	}
+	return s.DeleteClient(client.Id)
 }
 
 // DeleteAllClients stops the AWG interface and removes all clients and the server record.
@@ -475,9 +505,32 @@ func (s *AwgService) ToggleClient(id int, enable bool) error {
 	return s.UpdateClient(client)
 }
 
+// ToggleClientByUUID enables or disables a client identified by UUID.
+func (s *AwgService) ToggleClientByUUID(clientUUID string, enable bool) error {
+	client, err := s.GetClientByUUID(clientUUID)
+	if err != nil {
+		return err
+	}
+	client.Enable = enable
+	return s.UpdateClient(client)
+}
+
 // GetClientConfig returns the text content of a client .conf file.
 func (s *AwgService) GetClientConfig(id int) (string, error) {
 	client, err := s.GetClient(id)
+	if err != nil {
+		return "", err
+	}
+	server, err := s.GetServer()
+	if err != nil {
+		return "", err
+	}
+	return awg.GenerateClientConfig(server, client), nil
+}
+
+// GetClientConfigByUUID returns config text for a client identified by UUID.
+func (s *AwgService) GetClientConfigByUUID(clientUUID string) (string, error) {
+	client, err := s.GetClientByUUID(clientUUID)
 	if err != nil {
 		return "", err
 	}
@@ -492,6 +545,15 @@ func (s *AwgService) GetClientConfig(id int) (string, error) {
 func (s *AwgService) ResetClientTraffic(id int) error {
 	db := database.GetDB()
 	return db.Model(&model.AwgClient{}).Where("id = ?", id).Updates(map[string]any{
+		"upload":   0,
+		"download": 0,
+	}).Error
+}
+
+// ResetClientTrafficByUUID resets traffic counters for a client identified by UUID.
+func (s *AwgService) ResetClientTrafficByUUID(clientUUID string) error {
+	db := database.GetDB()
+	return db.Model(&model.AwgClient{}).Where("uuid = ?", clientUUID).Updates(map[string]any{
 		"upload":   0,
 		"download": 0,
 	}).Error

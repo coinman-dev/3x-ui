@@ -220,11 +220,11 @@ func (s *WgService) GetNetworkInterfaces() []NetworkInterface {
 func (s *WgService) GetOnlineClients() []string {
 	db := database.GetDB()
 	threshold := time.Now().Add(-3 * time.Minute).UnixMilli()
-	var emails []string
+	var uuids []string
 	db.Model(&model.WgClient{}).
 		Where("enable = ? AND last_online > ?", true, threshold).
-		Pluck("email", &emails)
-	return emails
+		Pluck("uuid", &uuids)
+	return uuids
 }
 
 // --- Clients ---
@@ -244,6 +244,16 @@ func (s *WgService) GetClient(id int) (*model.WgClient, error) {
 	db := database.GetDB()
 	var client model.WgClient
 	if err := db.First(&client, id).Error; err != nil {
+		return nil, err
+	}
+	return &client, nil
+}
+
+// GetClientByUUID returns a single WG client by UUID.
+func (s *WgService) GetClientByUUID(clientUUID string) (*model.WgClient, error) {
+	db := database.GetDB()
+	var client model.WgClient
+	if err := db.Where("uuid = ?", clientUUID).First(&client).Error; err != nil {
 		return nil, err
 	}
 	return &client, nil
@@ -368,6 +378,17 @@ func (s *WgService) UpdateClient(client *model.WgClient) error {
 	return nil
 }
 
+// UpdateClientByUUID updates an existing client located by UUID.
+func (s *WgService) UpdateClientByUUID(clientUUID string, client *model.WgClient) error {
+	existing, err := s.GetClientByUUID(clientUUID)
+	if err != nil {
+		return err
+	}
+	client.Id = existing.Id
+	client.UUID = existing.UUID
+	return s.UpdateClient(client)
+}
+
 // DeleteClient removes a WG client and cleans up NDP proxy if needed.
 func (s *WgService) DeleteClient(id int) error {
 	client, err := s.GetClient(id)
@@ -395,6 +416,15 @@ func (s *WgService) DeleteClient(id int) error {
 		}
 	}
 	return nil
+}
+
+// DeleteClientByUUID removes a WG client identified by UUID.
+func (s *WgService) DeleteClientByUUID(clientUUID string) error {
+	client, err := s.GetClientByUUID(clientUUID)
+	if err != nil {
+		return err
+	}
+	return s.DeleteClient(client.Id)
 }
 
 // DeleteAllClients stops the WG interface and removes all clients.
@@ -432,9 +462,32 @@ func (s *WgService) ToggleClient(id int, enable bool) error {
 	return s.UpdateClient(client)
 }
 
+// ToggleClientByUUID enables or disables a WG client identified by UUID.
+func (s *WgService) ToggleClientByUUID(clientUUID string, enable bool) error {
+	client, err := s.GetClientByUUID(clientUUID)
+	if err != nil {
+		return err
+	}
+	client.Enable = enable
+	return s.UpdateClient(client)
+}
+
 // GetClientConfig returns the text content of a client .conf file.
 func (s *WgService) GetClientConfig(id int) (string, error) {
 	client, err := s.GetClient(id)
+	if err != nil {
+		return "", err
+	}
+	server, err := s.GetServer()
+	if err != nil {
+		return "", err
+	}
+	return wg.GenerateClientConfig(server, client), nil
+}
+
+// GetClientConfigByUUID returns config text for a WG client identified by UUID.
+func (s *WgService) GetClientConfigByUUID(clientUUID string) (string, error) {
+	client, err := s.GetClientByUUID(clientUUID)
 	if err != nil {
 		return "", err
 	}
@@ -449,6 +502,15 @@ func (s *WgService) GetClientConfig(id int) (string, error) {
 func (s *WgService) ResetClientTraffic(id int) error {
 	db := database.GetDB()
 	return db.Model(&model.WgClient{}).Where("id = ?", id).Updates(map[string]any{
+		"upload":   0,
+		"download": 0,
+	}).Error
+}
+
+// ResetClientTrafficByUUID resets traffic counters for a WG client identified by UUID.
+func (s *WgService) ResetClientTrafficByUUID(clientUUID string) error {
+	db := database.GetDB()
+	return db.Model(&model.WgClient{}).Where("uuid = ?", clientUUID).Updates(map[string]any{
 		"upload":   0,
 		"download": 0,
 	}).Error

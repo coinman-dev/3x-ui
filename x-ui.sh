@@ -233,9 +233,11 @@ uninstall() {
         fi
     done
 
-    # Ask if user wants to uninstall AWG and ndppd packages
-    confirm "Do you want to uninstall amneziawg-tools and ndppd packages?" "y"
-    if [[ $? == 0 ]]; then
+    # Ask if user wants to uninstall AWG, WG and ndppd packages
+    confirm "Do you want to uninstall amneziawg+wireguard tools and ndppd packages?" "y"
+    local uninstall_tools=$?
+
+    if [[ $uninstall_tools == 0 ]]; then
         if command -v apt-get &>/dev/null; then
             apt-get remove -y amneziawg-tools ndppd 2>/dev/null
             apt-get autoremove -y 2>/dev/null
@@ -267,9 +269,7 @@ uninstall() {
     # Remove WG config directory
     rm -rf /etc/wireguard/
 
-    # Ask if user wants to uninstall wireguard-tools
-    confirm "Do you want to uninstall wireguard-tools package?" "y"
-    if [[ $? == 0 ]]; then
+    if [[ $uninstall_tools == 0 ]]; then
         if command -v apt-get &>/dev/null; then
             apt-get remove -y wireguard-tools 2>/dev/null
             apt-get autoremove -y 2>/dev/null
@@ -307,7 +307,7 @@ reset_user() {
         fi
         return 0
     fi
-    
+
     read -rp "Please set the login username [default is a random username]: " config_account
     [[ -z $config_account ]] && config_account=$(gen_random_string 10)
     read -rp "Please set the login password [default is a random password]: " config_password
@@ -320,7 +320,7 @@ reset_user() {
         ${xui_folder}/x-ui setting -username "${config_account}" -password "${config_password}" -resetTwoFactor true >/dev/null 2>&1
         echo -e "Two factor authentication has been disabled."
     fi
-    
+
     echo -e "Panel login username has been reset to: ${green} ${config_account} ${plain}"
     echo -e "Panel login password has been reset to: ${green} ${config_password} ${plain}"
     echo -e "${green} Please use the new login username and password to access the X-UI panel. Also remember them! ${plain}"
@@ -1224,28 +1224,28 @@ ssl_cert_issue_main() {
 ssl_cert_issue_for_ip() {
     LOGI "Starting automatic SSL certificate generation for server IP..."
     LOGI "Using Let's Encrypt shortlived profile (~6 days validity, auto-renews)"
-    
+
     local existing_webBasePath=$(${xui_folder}/x-ui setting -show true | grep -Eo 'webBasePath: .+' | awk '{print $2}')
     local existing_port=$(${xui_folder}/x-ui setting -show true | grep -Eo 'port: .+' | awk '{print $2}')
-    
+
     # Get server IP
     local server_ip=$(curl -s --max-time 3 https://api.ipify.org)
     if [ -z "$server_ip" ]; then
         server_ip=$(curl -s --max-time 3 https://4.ident.me)
     fi
-    
+
     if [ -z "$server_ip" ]; then
         LOGE "Failed to get server IP address"
         return 1
     fi
-    
+
     LOGI "Server IP detected: ${server_ip}"
-    
+
     # Ask for optional IPv6
     local ipv6_addr=""
     read -rp "Do you have an IPv6 address to include? (leave empty to skip): " ipv6_addr
     ipv6_addr="${ipv6_addr// /}"  # Trim whitespace
-    
+
     # check for acme.sh first
     if ! command -v ~/.acme.sh/acme.sh &>/dev/null; then
         LOGI "acme.sh not found, installing..."
@@ -1255,7 +1255,7 @@ ssl_cert_issue_for_ip() {
             return 1
         fi
     fi
-    
+
     # install socat
     case "${release}" in
     ubuntu | debian | armbian)
@@ -1284,18 +1284,18 @@ ssl_cert_issue_for_ip() {
         LOGW "Unsupported OS for automatic socat installation"
         ;;
     esac
-    
+
     # Create certificate directory
     certPath="/root/cert/ip"
     mkdir -p "$certPath"
-    
+
     # Build domain arguments
     local domain_args="-d ${server_ip}"
     if [[ -n "$ipv6_addr" ]] && is_ipv6 "$ipv6_addr"; then
         domain_args="${domain_args} -d ${ipv6_addr}"
         LOGI "Including IPv6 address: ${ipv6_addr}"
     fi
-    
+
     # Choose port for HTTP-01 listener (default 80, allow override)
     local WebPort=""
     read -rp "Port to use for ACME HTTP-01 listener (default 80): " WebPort
@@ -1331,10 +1331,10 @@ ssl_cert_issue_for_ip() {
             break
         fi
     done
-    
+
     # Reload command - restarts panel after renewal
     local reloadCmd="systemctl restart x-ui 2>/dev/null || rc-service x-ui restart 2>/dev/null"
-    
+
     # issue the certificate for IP with shortlived profile
     ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt --force
     ~/.acme.sh/acme.sh --issue \
@@ -1345,7 +1345,7 @@ ssl_cert_issue_for_ip() {
         --days 6 \
         --httpport ${WebPort} \
         --force
-    
+
     if [ $? -ne 0 ]; then
         LOGE "Failed to issue certificate for IP: ${server_ip}"
         LOGE "Make sure port ${WebPort} is open and the server is accessible from the internet"
@@ -1357,7 +1357,7 @@ ssl_cert_issue_for_ip() {
     else
         LOGI "Certificate issued successfully for IP: ${server_ip}"
     fi
-    
+
     # Install the certificate
     # Note: acme.sh may report "Reload error" and exit non-zero if reloadcmd fails,
     # but the cert files are still installed. We check for files instead of exit code.
@@ -1365,7 +1365,7 @@ ssl_cert_issue_for_ip() {
         --key-file "${certPath}/privkey.pem" \
         --fullchain-file "${certPath}/fullchain.pem" \
         --reloadcmd "${reloadCmd}" 2>&1 || true
-    
+
     # Verify certificate files exist (don't rely on exit code - reloadcmd failure causes non-zero)
     if [[ ! -f "${certPath}/fullchain.pem" || ! -f "${certPath}/privkey.pem" ]]; then
         LOGE "Certificate files not found after installation"
@@ -1375,18 +1375,18 @@ ssl_cert_issue_for_ip() {
         rm -rf ${certPath} 2>/dev/null
         return 1
     fi
-    
+
     LOGI "Certificate files installed successfully"
-    
+
     # enable auto-renew
     ~/.acme.sh/acme.sh --upgrade --auto-upgrade >/dev/null 2>&1
     chmod 600 $certPath/privkey.pem 2>/dev/null
     chmod 644 $certPath/fullchain.pem 2>/dev/null
-    
+
     # Set certificate paths for the panel
     local webCertFile="${certPath}/fullchain.pem"
     local webKeyFile="${certPath}/privkey.pem"
-    
+
     if [[ -f "$webCertFile" && -f "$webKeyFile" ]]; then
         ${xui_folder}/x-ui cert -webCert "$webCertFile" -webCertKey "$webKeyFile"
         LOGI "Certificate configured for panel"
@@ -1456,17 +1456,17 @@ ssl_cert_issue() {
     while true; do
         read -rp "Please enter your domain name: " domain
         domain="${domain// /}"  # Trim whitespace
-        
+
         if [[ -z "$domain" ]]; then
             LOGE "Domain name cannot be empty. Please try again."
             continue
         fi
-        
+
         if ! is_domain "$domain"; then
             LOGE "Invalid domain format: ${domain}. Please enter a valid domain name."
             continue
         fi
-        
+
         break
     done
     LOGD "Your domain is: ${domain}, checking it..."
@@ -1526,7 +1526,7 @@ ssl_cert_issue() {
             LOGI "Reloadcmd is: systemctl reload nginx ; x-ui restart"
             reloadCmd="systemctl reload nginx ; x-ui restart"
             ;;
-        2)  
+        2)
             LOGD "It's recommended to put x-ui restart at the end, so it won't raise an error if other services fails"
             read -rp "Please enter your reloadcmd (example: systemctl reload nginx ; x-ui restart): " reloadCmd
             LOGI "Your reloadcmd is: ${reloadCmd}"
@@ -1673,7 +1673,7 @@ ssl_cert_issue_CF() {
                 LOGI "Reloadcmd is: systemctl reload nginx ; x-ui restart"
                 reloadCmd="systemctl reload nginx ; x-ui restart"
                 ;;
-            2)  
+            2)
                 LOGD "It's recommended to put x-ui restart at the end, so it won't raise an error if other services fails"
                 read -rp "Please enter your reloadcmd (example: systemctl reload nginx ; x-ui restart): " reloadCmd
                 LOGI "Your reloadcmd is: ${reloadCmd}"
@@ -1686,7 +1686,7 @@ ssl_cert_issue_CF() {
         ~/.acme.sh/acme.sh --installcert -d ${CF_Domain} -d *.${CF_Domain} \
             --key-file ${certPath}/privkey.pem \
             --fullchain-file ${certPath}/fullchain.pem --reloadcmd "${reloadCmd}"
-        
+
         if [ $? -ne 0 ]; then
             LOGE "Certificate installation failed, script exiting..."
             exit 1
@@ -2015,7 +2015,7 @@ remove_iplimit() {
             dnf autoremove -y
             ;;
         centos)
-            if [[ "${VERSION_ID}" =~ ^7 ]]; then    
+            if [[ "${VERSION_ID}" =~ ^7 ]]; then
                 yum remove fail2ban -y
                 yum autoremove -y
             else

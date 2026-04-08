@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/coinman-dev/3ax-ui/v2/database/model"
@@ -30,11 +31,16 @@ func (a *AwgController) initRouter(g *gin.RouterGroup) {
 	g.GET("/clients", a.getClients)
 	g.POST("/client/add", a.addClient)
 	g.POST("/client/update/:id", a.updateClient)
+	g.POST("/client/updateByUuid/:uuid", a.updateClientByUUID)
 	g.POST("/client/del/:id", a.deleteClient)
+	g.POST("/client/delByUuid/:uuid", a.deleteClientByUUID)
 	g.POST("/client/toggle/:id", a.toggleClient)
+	g.POST("/client/toggleByUuid/:uuid", a.toggleClientByUUID)
 
 	g.GET("/client/:id/config", a.getClientConfig)
+	g.GET("/client/uuid/:uuid/config", a.getClientConfigByUUID)
 	g.POST("/client/resetTraffic/:id", a.resetClientTraffic)
+	g.POST("/client/resetTrafficByUuid/:uuid", a.resetClientTrafficByUUID)
 }
 
 func (a *AwgController) getServer(c *gin.Context) {
@@ -126,6 +132,21 @@ func (a *AwgController) updateClient(c *gin.Context) {
 	jsonMsg(c, "AWG client updated", err)
 }
 
+func (a *AwgController) updateClientByUUID(c *gin.Context) {
+	clientUUID := c.Param("uuid")
+	if clientUUID == "" {
+		jsonMsg(c, "invalid uuid", errors.New("missing uuid"))
+		return
+	}
+	var client model.AwgClient
+	if err := c.ShouldBindJSON(&client); err != nil {
+		jsonMsg(c, "invalid request", err)
+		return
+	}
+	err := a.awgService.UpdateClientByUUID(clientUUID, &client)
+	jsonMsg(c, "AWG client updated", err)
+}
+
 func (a *AwgController) deleteClient(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -133,6 +154,16 @@ func (a *AwgController) deleteClient(c *gin.Context) {
 		return
 	}
 	err = a.awgService.DeleteClient(id)
+	jsonMsg(c, "AWG client deleted", err)
+}
+
+func (a *AwgController) deleteClientByUUID(c *gin.Context) {
+	clientUUID := c.Param("uuid")
+	if clientUUID == "" {
+		jsonMsg(c, "invalid uuid", errors.New("missing uuid"))
+		return
+	}
+	err := a.awgService.DeleteClientByUUID(clientUUID)
 	jsonMsg(c, "AWG client deleted", err)
 }
 
@@ -153,6 +184,23 @@ func (a *AwgController) toggleClient(c *gin.Context) {
 	jsonMsg(c, "AWG client toggled", err)
 }
 
+func (a *AwgController) toggleClientByUUID(c *gin.Context) {
+	clientUUID := c.Param("uuid")
+	if clientUUID == "" {
+		jsonMsg(c, "invalid uuid", errors.New("missing uuid"))
+		return
+	}
+	var body struct {
+		Enable bool `json:"enable"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		jsonMsg(c, "invalid request", err)
+		return
+	}
+	err := a.awgService.ToggleClientByUUID(clientUUID, body.Enable)
+	jsonMsg(c, "AWG client toggled", err)
+}
+
 func (a *AwgController) getClientConfig(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -167,6 +215,20 @@ func (a *AwgController) getClientConfig(c *gin.Context) {
 	jsonObj(c, config, nil)
 }
 
+func (a *AwgController) getClientConfigByUUID(c *gin.Context) {
+	clientUUID := c.Param("uuid")
+	if clientUUID == "" {
+		jsonMsg(c, "invalid uuid", errors.New("missing uuid"))
+		return
+	}
+	config, err := a.awgService.GetClientConfigByUUID(clientUUID)
+	if err != nil {
+		jsonMsg(c, "get client config", err)
+		return
+	}
+	jsonObj(c, config, nil)
+}
+
 func (a *AwgController) resetClientTraffic(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -174,5 +236,15 @@ func (a *AwgController) resetClientTraffic(c *gin.Context) {
 		return
 	}
 	err = a.awgService.ResetClientTraffic(id)
+	jsonMsg(c, "AWG client traffic reset", err)
+}
+
+func (a *AwgController) resetClientTrafficByUUID(c *gin.Context) {
+	clientUUID := c.Param("uuid")
+	if clientUUID == "" {
+		jsonMsg(c, "invalid uuid", errors.New("missing uuid"))
+		return
+	}
+	err := a.awgService.ResetClientTrafficByUUID(clientUUID)
 	jsonMsg(c, "AWG client traffic reset", err)
 }

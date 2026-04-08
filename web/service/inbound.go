@@ -334,10 +334,14 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 func (s *InboundService) addNativeWgInbound(inbound *model.Inbound) (*model.Inbound, bool, error) {
 	db := database.GetDB()
 
-	// Set defaults for nativewg
-	if inbound.Settings == "" {
-		inbound.Settings = `{"clients":[]}`
+	var count int64
+	db.Model(&model.Inbound{}).Where("protocol = ?", model.NativeWG).Count(&count)
+	if count > 0 {
+		return inbound, false, common.NewError("WireGuard Native inbound already exists. Only one is allowed.")
 	}
+
+	// Native WG peers are managed outside inbound.settings.
+	inbound.Settings = `{"clients":[]}`
 	if inbound.Tag == "" {
 		inbound.Tag = "inbound-nativewg"
 	}
@@ -371,10 +375,8 @@ func (s *InboundService) addAmneziawgInbound(inbound *model.Inbound) (*model.Inb
 		return inbound, false, common.NewError("AmneziaWG inbound already exists. Only one is allowed.")
 	}
 
-	// Set defaults for amneziawg
-	if inbound.Settings == "" {
-		inbound.Settings = `{"clients":[]}`
-	}
+	// AWG peers are managed outside inbound.settings.
+	inbound.Settings = `{"clients":[]}`
 	if inbound.Tag == "" {
 		inbound.Tag = "inbound-amneziawg"
 	}

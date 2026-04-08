@@ -69,16 +69,69 @@ is_domain() {
 is_port_in_use() {
     local port="$1"
     if command -v ss >/dev/null 2>&1; then
-        ss -ltn 2>/dev/null | awk -v p=":${port}$" '$4 ~ p {exit 0} END {exit 1}'
-        return
+        ss -H -ltn 2>/dev/null | grep -Eq "(^|[[:space:]])[^[:space:]]*:${port}([[:space:]]|$)" && return 0
+        ss -H -lun 2>/dev/null | grep -Eq "(^|[[:space:]])[^[:space:]]*:${port}([[:space:]]|$)" && return 0
+        return 1
     fi
     if command -v netstat >/dev/null 2>&1; then
-        netstat -lnt 2>/dev/null | awk -v p=":${port} " '$4 ~ p {exit 0} END {exit 1}'
-        return
+        netstat -lnt 2>/dev/null | awk -v p=":${port}$" '$4 ~ p {found=1} END {exit !found}' && return 0
+        netstat -lnu 2>/dev/null | awk -v p=":${port}$" '$4 ~ p {found=1} END {exit !found}' && return 0
+        return 1
     fi
     if command -v lsof >/dev/null 2>&1; then
         lsof -nP -iTCP:${port} -sTCP:LISTEN >/dev/null 2>&1 && return 0
+        lsof -nP -iUDP:${port} >/dev/null 2>&1 && return 0
     fi
+    return 1
+}
+
+random_port_candidate() {
+    local min_port="${1:-10000}"
+    local max_port="${2:-65535}"
+    local span=$((max_port - min_port + 1))
+    echo $((min_port + ((((RANDOM << 15) | RANDOM)) % span)))
+}
+
+pick_random_port() {
+    local min_port="${1:-10000}"
+    local max_port="${2:-65535}"
+    shift 2
+    local excluded_ports=("$@")
+    local attempts=0
+    local candidate=""
+    local excluded=""
+    local skip=0
+
+    while [[ "$attempts" -lt 256 ]]; do
+        candidate=$(random_port_candidate "$min_port" "$max_port")
+        skip=0
+        for excluded in "${excluded_ports[@]}"; do
+            if [[ -n "$excluded" && "$candidate" -eq "$excluded" ]]; then
+                skip=1
+                break
+            fi
+        done
+        if [[ "$skip" -eq 0 ]] && ! is_port_in_use "$candidate"; then
+            echo "$candidate"
+            return 0
+        fi
+        attempts=$((attempts + 1))
+    done
+
+    for ((candidate=min_port; candidate<=max_port; candidate++)); do
+        skip=0
+        for excluded in "${excluded_ports[@]}"; do
+            if [[ -n "$excluded" && "$candidate" -eq "$excluded" ]]; then
+                skip=1
+                break
+            fi
+        done
+        if [[ "$skip" -eq 0 ]] && ! is_port_in_use "$candidate"; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+
     return 1
 }
 
@@ -1092,15 +1145,13 @@ print(str(first) + '/' + str(net.prefixlen))
         echo -e "  Server keys:          ${green}generated${plain}"
     fi
 
-    # --- Find free port for AWG ---
-    local awg_port=51820
-    while is_port_in_use "$awg_port"; do
-        awg_port=$((awg_port + 1))
-        if [[ "$awg_port" -gt 52000 ]]; then
-            awg_port=51820
-            break
-        fi
-    done
+    # --- Find random free port for AWG ---
+    local awg_port
+    awg_port=$(pick_random_port 10000 65535)
+    if [[ -z "$awg_port" ]]; then
+        echo -e "  ${red}Failed to select a free AWG listen port.${plain}"
+        return 1
+    fi
     echo -e "  AWG listen port:      ${green}${awg_port}${plain}"
 
     # --- Endpoint ---
@@ -1324,15 +1375,13 @@ print(str(first) + '/' + str(net.prefixlen))
         echo -e "  Server keys:          ${green}generated${plain}"
     fi
 
-    # --- Find free port for WG (start at 51821 to avoid conflict with AWG at 51820) ---
-    local wg_port=51821
-    while is_port_in_use "$wg_port"; do
-        wg_port=$((wg_port + 1))
-        if [[ "$wg_port" -gt 52100 ]]; then
-            wg_port=51821
-            break
-        fi
-    done
+    # --- Find random free port for WG ---
+    local wg_port
+    wg_port=$(pick_random_port 10000 65535 "${awg_port}")
+    if [[ -z "$wg_port" ]]; then
+        echo -e "  ${red}Failed to select a free WG listen port.${plain}"
+        return 1
+    fi
     echo -e "  WG listen port:       ${green}${wg_port}${plain}"
 
     local endpoint="${server_ipv4}"

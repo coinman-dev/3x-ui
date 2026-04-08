@@ -28,6 +28,7 @@ func (s *WgService) GetServer() (*model.WgServer, error) {
 	}
 
 	needSave := false
+	isInitialRecord := server.PrivateKey == "" && server.PublicKey == ""
 
 	// Generate keys if missing
 	if server.PrivateKey == "" {
@@ -37,6 +38,16 @@ func (s *WgService) GetServer() (*model.WgServer, error) {
 		}
 		server.PrivateKey = priv
 		server.PublicKey = pub
+		needSave = true
+	}
+
+	// Fresh auto-created records may still inherit the legacy fixed DB default.
+	if server.ListenPort <= 0 || (isInitialRecord && server.ListenPort == legacyWgListenPort) {
+		port, err := pickRandomTunnelListenPort(getExistingAwgListenPort(db))
+		if err != nil {
+			return nil, fmt.Errorf("select WG listen port: %w", err)
+		}
+		server.ListenPort = port
 		needSave = true
 	}
 
@@ -58,6 +69,15 @@ func (s *WgService) GetServer() (*model.WgServer, error) {
 // SaveServer saves server settings and optionally applies them to the OS.
 func (s *WgService) SaveServer(server *model.WgServer) error {
 	db := database.GetDB()
+
+	if server.ListenPort <= 0 {
+		port, err := pickRandomTunnelListenPort(getExistingAwgListenPort(db))
+		if err != nil {
+			return fmt.Errorf("select WG listen port: %w", err)
+		}
+		server.ListenPort = port
+	}
+
 	server.UpdatedAt = time.Now().UnixMilli()
 	if err := db.Save(server).Error; err != nil {
 		return err
@@ -105,8 +125,13 @@ func (s *WgService) ResetToDefaults() (*model.WgServer, error) {
 		server.ExternalInterface = wg.DetectDefaultInterface()
 	}
 
+	port, err := pickRandomTunnelListenPort(getExistingAwgListenPort(db))
+	if err != nil {
+		return nil, fmt.Errorf("select WG listen port: %w", err)
+	}
+
 	server.Enable = false
-	server.ListenPort = 51821
+	server.ListenPort = port
 	server.MTU = 1420
 	server.PrivateKey = priv
 	server.PublicKey = pub

@@ -139,9 +139,9 @@
                       <a-form-item label='{{ i18n "pages.awg.externalInterface" }}'>
                         <a-select v-model="server.externalInterface"
                           style="width: 100%"
-                          :placeholder="defaultInterface || '{{ i18n "pages.awg.autoDetect" }}'"
+                          :placeholder="defaultIPv4Interface || '{{ i18n "pages.awg.autoDetect" }}'"
                           :not-found-content="'{{ i18n "pages.awg.noInterfaces" }}'">
-                          <a-select-option v-for="iface in ipv4Interfaces" :key="iface.name" :value="iface.name">
+                          <a-select-option v-for="iface in interfaceOptions" :key="iface.name" :value="iface.name">
                             [[ iface.name ]]
                           </a-select-option>
                         </a-select>
@@ -181,11 +181,10 @@
                       <a-form-item label='{{ i18n "pages.awg.externalInterface" }}'>
                         <a-select v-model="server.ipv6ExternalInterface"
                           style="width: 100%"
-                          :placeholder="'{{ i18n "pages.awg.sameAsIpv4" }} (' + (server.externalInterface || defaultInterface || 'auto') + ')'"
-                          allow-clear
+                          :placeholder="'{{ i18n "pages.awg.sameAsIpv4" }} (' + (server.externalInterface || defaultIPv4Interface || 'auto') + ')'"
                           :disabled="!server.ipv6Enabled"
                           :not-found-content="'{{ i18n "pages.awg.noInterfaces" }}'">
-                          <a-select-option v-for="iface in ipv6Interfaces" :key="iface.name" :value="iface.name">
+                          <a-select-option v-for="iface in interfaceOptions" :key="iface.name" :value="iface.name">
                             [[ iface.name ]]
                           </a-select-option>
                         </a-select>
@@ -299,20 +298,50 @@
       await this.loadData();
     },
     computed: {
-      ipv4Interfaces() {
-        return this.networkInterfaces.filter(i => i.ipv4);
+      interfaceOptions() {
+        return this.networkInterfaces;
       },
-      ipv6Interfaces() {
-        return this.networkInterfaces.filter(i => i.ipv6);
+      defaultIPv4Interface() {
+        return this.pickDefaultInterface(this.networkInterfaces, 'ipv4');
       },
-      defaultInterface() {
-        if (this.ipv4Interfaces.length > 0) {
-          return this.ipv4Interfaces[0].name;
-        }
-        return '';
+      defaultIPv6Interface() {
+        return this.pickDefaultInterface(this.networkInterfaces, 'ipv6');
       },
     },
     methods: {
+      pickDefaultInterface(interfaces, ipFamily) {
+        if (!Array.isArray(interfaces) || interfaces.length === 0) {
+          return '';
+        }
+
+        const defaultFlag = ipFamily === 'ipv6' ? 'defaultIPv6' : 'defaultIPv4';
+        const capabilityFlag = ipFamily === 'ipv6' ? 'ipv6' : 'ipv4';
+        const byRoute = interfaces.find(i => i[defaultFlag]);
+        if (byRoute && byRoute.name) {
+          return byRoute.name;
+        }
+        const byCapability = interfaces.find(i => i[capabilityFlag]);
+        if (byCapability && byCapability.name) {
+          return byCapability.name;
+        }
+        return interfaces[0].name || '';
+      },
+      applyDetectedInterfaceDefaults() {
+        if (!Array.isArray(this.networkInterfaces) || this.networkInterfaces.length === 0) {
+          return;
+        }
+
+        const names = new Set(this.networkInterfaces.map(i => i.name));
+        const defaultIPv4 = this.defaultIPv4Interface;
+        const defaultIPv6 = this.defaultIPv6Interface;
+
+        if ((!this.server.externalInterface || !names.has(this.server.externalInterface)) && defaultIPv4) {
+          this.server.externalInterface = defaultIPv4;
+        }
+        if ((!this.server.ipv6ExternalInterface || !names.has(this.server.ipv6ExternalInterface)) && defaultIPv6) {
+          this.server.ipv6ExternalInterface = defaultIPv6;
+        }
+      },
       async loadData() {
         this.loading = true;
         await Promise.all([
@@ -320,6 +349,7 @@
           this.loadStatus(),
           this.loadInterfaces(),
         ]);
+        this.applyDetectedInterfaceDefaults();
         this.loading = false;
         this.serverLoaded = true;
       },

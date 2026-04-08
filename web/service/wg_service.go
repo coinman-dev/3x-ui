@@ -200,6 +200,7 @@ func (s *WgService) GetNetworkInterfaces() []NetworkInterface {
 		logger.Warning("Failed to list network interfaces:", err)
 		return nil
 	}
+	defaultIPv4Iface, defaultIPv6Iface := detectDefaultRouteInterfaces()
 
 	var result []NetworkInterface
 	for _, iface := range ifaces {
@@ -218,7 +219,11 @@ func (s *WgService) GetNetworkInterfaces() []NetworkInterface {
 			continue
 		}
 
-		ni := NetworkInterface{Name: iface.Name}
+		ni := NetworkInterface{
+			Name:        iface.Name,
+			DefaultIPv4: iface.Name == defaultIPv4Iface,
+			DefaultIPv6: iface.Name == defaultIPv6Iface,
+		}
 		for _, addr := range addrs {
 			ipNet, ok := addr.(*net.IPNet)
 			if !ok {

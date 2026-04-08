@@ -215,9 +215,11 @@ func (s *AwgService) GetServerStatus() *AwgStatus {
 
 // NetworkInterface describes a system network interface with its IP capabilities.
 type NetworkInterface struct {
-	Name string `json:"name"`
-	IPv4 bool   `json:"ipv4"`
-	IPv6 bool   `json:"ipv6"`
+	Name        string `json:"name"`
+	IPv4        bool   `json:"ipv4"`
+	IPv6        bool   `json:"ipv6"`
+	DefaultIPv4 bool   `json:"defaultIPv4"`
+	DefaultIPv6 bool   `json:"defaultIPv6"`
 }
 
 // GetNetworkInterfaces returns non-loopback, non-tunnel UP interfaces with IP version info.
@@ -227,6 +229,7 @@ func (s *AwgService) GetNetworkInterfaces() []NetworkInterface {
 		logger.Warning("Failed to list network interfaces:", err)
 		return nil
 	}
+	defaultIPv4Iface, defaultIPv6Iface := detectDefaultRouteInterfaces()
 
 	var result []NetworkInterface
 	for _, iface := range ifaces {
@@ -246,7 +249,11 @@ func (s *AwgService) GetNetworkInterfaces() []NetworkInterface {
 			continue
 		}
 
-		ni := NetworkInterface{Name: iface.Name}
+		ni := NetworkInterface{
+			Name:        iface.Name,
+			DefaultIPv4: iface.Name == defaultIPv4Iface,
+			DefaultIPv6: iface.Name == defaultIPv6Iface,
+		}
 		for _, addr := range addrs {
 			ipNet, ok := addr.(*net.IPNet)
 			if !ok {

@@ -254,9 +254,9 @@
                           <a-select v-model="awgServer.externalInterface"
                             :dropdown-class-name="themeSwitcher.currentTheme"
                             :style="{ width: '100%' }"
-                            :placeholder="awgDefaultInterface || '{{ i18n "pages.awg.autoDetect" }}'"
+                            :placeholder="awgDefaultIPv4Interface || '{{ i18n "pages.awg.autoDetect" }}'"
                             :not-found-content="'{{ i18n "pages.awg.noInterfaces" }}'">
-                            <a-select-option v-for="iface in awgIPv4Interfaces"
+                            <a-select-option v-for="iface in awgInterfaceOptions"
                               :key="iface.name"
                               :value="iface.name">
                               <span>[[ iface.name ]]</span>
@@ -322,11 +322,10 @@
                           <a-select v-model="awgServer.ipv6ExternalInterface"
                             :dropdown-class-name="themeSwitcher.currentTheme"
                             :style="{ width: '100%' }"
-                            :placeholder="'{{ i18n "pages.awg.sameAsIpv4" }} (' + (awgServer.externalInterface || awgDefaultInterface || 'auto') + ')'"
-                            allow-clear
+                            :placeholder="'{{ i18n "pages.awg.sameAsIpv4" }} (' + (awgServer.externalInterface || awgDefaultIPv4Interface || 'auto') + ')'"
                             :disabled="!awgServer.ipv6Enabled"
                             :not-found-content="'{{ i18n "pages.awg.noInterfaces" }}'">
-                            <a-select-option v-for="iface in awgIPv6Interfaces"
+                            <a-select-option v-for="iface in awgInterfaceOptions"
                               :key="iface.name"
                               :value="iface.name">
                               <span>[[ iface.name ]]</span>
@@ -561,9 +560,9 @@
                           <a-select v-model="wgServer.externalInterface"
                             :dropdown-class-name="themeSwitcher.currentTheme"
                             :style="{ width: '100%' }"
-                            :placeholder="wgDefaultInterface || '{{ i18n "pages.nativewg.autoDetect" }}'"
+                            :placeholder="wgDefaultIPv4Interface || '{{ i18n "pages.nativewg.autoDetect" }}'"
                             :not-found-content="'{{ i18n "pages.nativewg.noInterfaces" }}'">
-                            <a-select-option v-for="iface in wgIPv4Interfaces"
+                            <a-select-option v-for="iface in wgInterfaceOptions"
                               :key="iface.name"
                               :value="iface.name">
                               <span>[[ iface.name ]]</span>
@@ -629,11 +628,10 @@
                           <a-select v-model="wgServer.ipv6ExternalInterface"
                             :dropdown-class-name="themeSwitcher.currentTheme"
                             :style="{ width: '100%' }"
-                            :placeholder="'{{ i18n "pages.nativewg.sameAsIpv4" }} (' + (wgServer.externalInterface || wgDefaultInterface || 'auto') + ')'"
-                            allow-clear
+                            :placeholder="'{{ i18n "pages.nativewg.sameAsIpv4" }} (' + (wgServer.externalInterface || wgDefaultIPv4Interface || 'auto') + ')'"
                             :disabled="!wgServer.ipv6Enabled"
                             :not-found-content="'{{ i18n "pages.nativewg.noInterfaces" }}'">
-                            <a-select-option v-for="iface in wgIPv6Interfaces"
+                            <a-select-option v-for="iface in wgInterfaceOptions"
                               :key="iface.name"
                               :value="iface.name">
                               <span>[[ iface.name ]]</span>
@@ -759,26 +757,59 @@
           ? '{{ i18n "pages.awg.saveHint" }}'
           : '{{ i18n "pages.nativewg.saveHint" }}';
       },
-      awgIPv4Interfaces() {
-        return this.awgNetworkInterfaces.filter(i => i.ipv4);
+      awgInterfaceOptions() {
+        return this.awgNetworkInterfaces;
       },
-      awgIPv6Interfaces() {
-        return this.awgNetworkInterfaces.filter(i => i.ipv6);
+      awgDefaultIPv4Interface() {
+        return this.pickDefaultInterface(this.awgNetworkInterfaces, 'ipv4');
       },
-      awgDefaultInterface() {
-        return this.awgIPv4Interfaces.length > 0 ? this.awgIPv4Interfaces[0].name : '';
+      awgDefaultIPv6Interface() {
+        return this.pickDefaultInterface(this.awgNetworkInterfaces, 'ipv6');
       },
-      wgIPv4Interfaces() {
-        return this.wgNetworkInterfaces.filter(i => i.ipv4);
+      wgInterfaceOptions() {
+        return this.wgNetworkInterfaces;
       },
-      wgIPv6Interfaces() {
-        return this.wgNetworkInterfaces.filter(i => i.ipv6);
+      wgDefaultIPv4Interface() {
+        return this.pickDefaultInterface(this.wgNetworkInterfaces, 'ipv4');
       },
-      wgDefaultInterface() {
-        return this.wgIPv4Interfaces.length > 0 ? this.wgIPv4Interfaces[0].name : '';
+      wgDefaultIPv6Interface() {
+        return this.pickDefaultInterface(this.wgNetworkInterfaces, 'ipv6');
       },
     },
     methods: {
+      pickDefaultInterface(interfaces, ipFamily) {
+        if (!Array.isArray(interfaces) || interfaces.length === 0) {
+          return '';
+        }
+
+        const defaultFlag = ipFamily === 'ipv6' ? 'defaultIPv6' : 'defaultIPv4';
+        const capabilityFlag = ipFamily === 'ipv6' ? 'ipv6' : 'ipv4';
+        const byRoute = interfaces.find(i => i[defaultFlag]);
+        if (byRoute && byRoute.name) {
+          return byRoute.name;
+        }
+        const byCapability = interfaces.find(i => i[capabilityFlag]);
+        if (byCapability && byCapability.name) {
+          return byCapability.name;
+        }
+        return interfaces[0].name || '';
+      },
+      applyDetectedInterfaceDefaults(server, interfaces) {
+        if (!server || !Array.isArray(interfaces) || interfaces.length === 0) {
+          return;
+        }
+
+        const names = new Set(interfaces.map(i => i.name));
+        const defaultIPv4 = this.pickDefaultInterface(interfaces, 'ipv4');
+        const defaultIPv6 = this.pickDefaultInterface(interfaces, 'ipv6');
+
+        if ((!server.externalInterface || !names.has(server.externalInterface)) && defaultIPv4) {
+          server.externalInterface = defaultIPv4;
+        }
+        if ((!server.ipv6ExternalInterface || !names.has(server.ipv6ExternalInterface)) && defaultIPv6) {
+          server.ipv6ExternalInterface = defaultIPv6;
+        }
+      },
       async loadAllData() {
         this.loadingStates.spinning = true;
         try {
@@ -813,6 +844,7 @@
             this.loadAwgStatus(),
             this.loadAwgInterfaces()
           ]);
+          this.applyDetectedInterfaceDefaults(this.awgServer, this.awgNetworkInterfaces);
           this.awgServerLoaded = true;
         } finally {
           this.awgLoading = false;
@@ -874,6 +906,7 @@
             this.loadWgStatus(),
             this.loadWgInterfaces()
           ]);
+          this.applyDetectedInterfaceDefaults(this.wgServer, this.wgNetworkInterfaces);
           this.wgServerLoaded = true;
         } finally {
           this.wgLoading = false;

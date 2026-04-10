@@ -54,10 +54,7 @@ jobs:
         run: go vet ./...
 
       - name: Run staticcheck
-        uses: dominikh/staticcheck-action@v1
-        with:
-          version: "latest"
-          install-go: false
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
 
       - name: Run tests
         run: go test -race -shuffle=on ./...

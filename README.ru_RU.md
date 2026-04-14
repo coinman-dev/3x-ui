@@ -23,9 +23,14 @@
 ## Быстрый старт
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh)
 ```
 
+Для установки последней pre-release версии:
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh) --beta
+```
 ---
 
 ## Зачем эта панель?
@@ -125,10 +130,10 @@ NDP proxy работает только тогда, когда блок IPv6-а�
 
 ```bash
 # Стабильная версия
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh)
 
 # Последняя pre-release версия
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/install.sh) --beta
+bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh) --beta
 
 ```
 
@@ -136,6 +141,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/inst
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/update.sh)
+=======
+# Конкретная версия
+bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh) v1.0.0
+>>>>>>> a89962fb (Use main branch in install commands)
 ```
 
 ---

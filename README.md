@@ -23,9 +23,14 @@
 ## Quick Start
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh)
 ```
 
+To install the latest pre-release version:
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh) --beta
+```
 ---
 
 ## Why this panel?
@@ -125,10 +130,10 @@ On installation, the subscription URL path is automatically generated with a ran
 
 ```bash
 # Stable release
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh)
 
 # Latest pre-release
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/install.sh) --beta
+bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh) --beta
 
 ```
 
@@ -138,6 +143,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/inst
 bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/update.sh)
 
 bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/update.sh) --beta
+=======
+# Specific version
+bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh) v1.0.0
+>>>>>>> a89962fb (Use main branch in install commands)
 ```
 
 ---

@@ -140,7 +140,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/instal
 ## Обновление панели
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/master/update.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/update.sh)
 =======
 # Конкретная версия
 bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh) v1.0.0

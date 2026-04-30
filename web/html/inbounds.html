@@ -1466,96 +1466,147 @@
         },
     ];
 
+    // Inner peer-table columns. Widths are percentages summing to 100%, so the
+    // table layout is independent of viewport width and ant-table's
+    // proportional leftover-space distribution doesn't lopside the layout.
     const innerColumns = [
         {
             title: '{{ i18n "pages.inbounds.operate" }}',
-            width: 70,
+            width: '12%',
             scopedSlots: { customRender: "actions" },
         },
         {
             title: '{{ i18n "pages.inbounds.enable" }}',
-            width: 30,
+            width: '9%',
             scopedSlots: { customRender: "enable" },
         },
         {
             title: '{{ i18n "online" }}',
-            width: 32,
+            width: '10%',
             scopedSlots: { customRender: "online" },
         },
         {
             title: '{{ i18n "pages.inbounds.client" }}',
-            width: 80,
+            width: '22%',
             scopedSlots: { customRender: "client" },
         },
         {
             title: '{{ i18n "pages.inbounds.traffic" }}',
-            width: 80,
+            width: '22%',
             align: "center",
             scopedSlots: { customRender: "traffic" },
         },
         {
             title: '{{ i18n "pages.inbounds.allTimeTraffic" }}',
-            width: 60,
+            width: '11%',
             align: "center",
             scopedSlots: { customRender: "allTime" },
         },
         {
             title: '{{ i18n "pages.inbounds.expireDate" }}',
-            width: 80,
+            width: '14%',
             align: "center",
             scopedSlots: { customRender: "expiryTime" },
         },
     ];
 
-    // Forwarded-ports column shown only inside AWG / native WG inbound peer tables.
-    // width:60 is enough for short port lists / ranges and avoids skewing the
-    // proportional column-width distribution that ant-table uses.
-    const forwardedPortsColumn = {
-        title: '{{ i18n "pages.inbounds.forwardedPortsShort" }}',
-        width: 60,
-        align: "center",
-        scopedSlots: { customRender: "forwardedPorts" },
-    };
-
-    // Insert the forwardedPorts column right after "Client".
-    const innerColumnsWg = (() => {
-        const cols = [...innerColumns];
-        const idx = cols.findIndex(
-            (c) => c.scopedSlots && c.scopedSlots.customRender === "client",
-        );
-        cols.splice(idx + 1, 0, forwardedPortsColumn);
-        return cols;
-    })();
+    // Forwarded-ports column shown only inside AWG / native WG inbound peer
+    // tables. Defined inline below in innerColumnsWg so that all percentages
+    // can be re-tuned to keep the WG-variant total at exactly 100%.
+    const innerColumnsWg = [
+        {
+            title: '{{ i18n "pages.inbounds.operate" }}',
+            width: '11%',
+            scopedSlots: { customRender: "actions" },
+        },
+        {
+            title: '{{ i18n "pages.inbounds.enable" }}',
+            width: '8%',
+            scopedSlots: { customRender: "enable" },
+        },
+        {
+            title: '{{ i18n "online" }}',
+            width: '9%',
+            scopedSlots: { customRender: "online" },
+        },
+        {
+            title: '{{ i18n "pages.inbounds.client" }}',
+            width: '19%',
+            scopedSlots: { customRender: "client" },
+        },
+        {
+            title: '{{ i18n "pages.inbounds.forwardedPortsShort" }}',
+            width: '10%',
+            align: "center",
+            scopedSlots: { customRender: "forwardedPorts" },
+        },
+        {
+            title: '{{ i18n "pages.inbounds.traffic" }}',
+            width: '19%',
+            align: "center",
+            scopedSlots: { customRender: "traffic" },
+        },
+        {
+            title: '{{ i18n "pages.inbounds.allTimeTraffic" }}',
+            width: '10%',
+            align: "center",
+            scopedSlots: { customRender: "allTime" },
+        },
+        {
+            title: '{{ i18n "pages.inbounds.expireDate" }}',
+            width: '14%',
+            align: "center",
+            scopedSlots: { customRender: "expiryTime" },
+        },
+    ];
 
     const innerMobileColumns = [
         {
             title: '{{ i18n "pages.inbounds.operate" }}',
-            width: 10,
+            width: '10%',
             align: "center",
             scopedSlots: { customRender: "actionMenu" },
         },
         {
             title: '{{ i18n "pages.inbounds.client" }}',
-            width: 90,
+            width: '80%',
             align: "left",
             scopedSlots: { customRender: "client" },
         },
         {
             title: '{{ i18n "pages.inbounds.info" }}',
-            width: 10,
+            width: '10%',
             align: "center",
             scopedSlots: { customRender: "info" },
         },
     ];
 
-    const innerMobileColumnsWg = (() => {
-        const cols = [...innerMobileColumns];
-        const idx = cols.findIndex(
-            (c) => c.scopedSlots && c.scopedSlots.customRender === "client",
-        );
-        cols.splice(idx + 1, 0, forwardedPortsColumn);
-        return cols;
-    })();
+    const innerMobileColumnsWg = [
+        {
+            title: '{{ i18n "pages.inbounds.operate" }}',
+            width: '10%',
+            align: "center",
+            scopedSlots: { customRender: "actionMenu" },
+        },
+        {
+            title: '{{ i18n "pages.inbounds.client" }}',
+            width: '50%',
+            align: "left",
+            scopedSlots: { customRender: "client" },
+        },
+        {
+            title: '{{ i18n "pages.inbounds.forwardedPortsShort" }}',
+            width: '25%',
+            align: "center",
+            scopedSlots: { customRender: "forwardedPorts" },
+        },
+        {
+            title: '{{ i18n "pages.inbounds.info" }}',
+            width: '15%',
+            align: "center",
+            scopedSlots: { customRender: "info" },
+        },
+    ];
 
     const app = new Vue({
         delimiters: ["[[", "]]"],

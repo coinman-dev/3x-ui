@@ -143,6 +143,8 @@ class DBInbound {
             case Protocols.TROJAN:
             case Protocols.AMNEZIAWG:
             case Protocols.NATIVEWG:
+            case Protocols.MIXED:
+            case Protocols.HTTP:
                 return true;
             case Protocols.SHADOWSOCKS:
                 return this.toInbound().isSSMultiUser;

@@ -1341,7 +1341,7 @@
                                             slot-scope="record"
                                         >
                                             <a-table
-                                                :row-key="client => client.id"
+                                                :row-key="client => client.id || client.email"
                                                 :columns="pickInnerColumns(record, isMobile)"
                                                 :data-source="getInboundClients(record)"
                                                 :pagination="pagination(getInboundClients(record))"
@@ -2488,6 +2488,13 @@
                         return clients.findIndex(
                             (item) => item && item.id === client.id,
                         );
+                    case Protocols.MIXED:
+                    case Protocols.HTTP:
+                        // Per-inbound unique key is the basic-auth username,
+                        // stored on the panel side as `email`.
+                        return clients.findIndex(
+                            (item) => item && item.email === client.email,
+                        );
                     default:
                         return clients.findIndex(
                             (item) =>
@@ -2806,6 +2813,9 @@
                     case Protocols.TROJAN:
                         return client.password;
                     case Protocols.SHADOWSOCKS:
+                    case Protocols.MIXED:
+                    case Protocols.HTTP:
+                        // Mixed/HTTP basic-auth username is stored as email.
                         return client.email;
                     default:
                         return client.id;

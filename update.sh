@@ -954,6 +954,34 @@ download_xray_and_geo() {
     return 0
 }
 
+# Wrapper around download_xray_and_geo that, in debug mode only, reuses
+# an existing xray + geo bundle from well-known cache locations
+# (${xui_folder}/bin, $SCRIPT_DIR/build/bin, $SCRIPT_DIR/target/bin)
+# instead of re-downloading. Production updates always pull fresh.
+fetch_xray_bundle_smart() {
+    local target_bin_dir="$1"
+    local panel_fname
+    panel_fname=$(xray_panel_arch)
+
+    if [[ "${XUI_DEBUG_MODE:-}" == "1" && -n "$panel_fname" ]]; then
+        if [[ -f "$target_bin_dir/xray-linux-${panel_fname}" ]]; then
+            echo -e "${green}xray-core + geo data already in ${target_bin_dir}, skipping download.${plain}"
+            return 0
+        fi
+        local src_dir
+        for src_dir in "$SCRIPT_DIR/build/bin" "$SCRIPT_DIR/target/bin"; do
+            if [[ -f "$src_dir/xray-linux-${panel_fname}" ]]; then
+                echo -e "${green}Reusing xray + geo bundle from ${src_dir}.${plain}"
+                mkdir -p "$target_bin_dir"
+                cp -f "$src_dir"/* "$target_bin_dir/" 2>/dev/null || true
+                return 0
+            fi
+        done
+    fi
+
+    download_xray_and_geo "$target_bin_dir"
+}
+
 # Ensures a Go toolchain ≥ 1.21 is on PATH. With Go ≥ 1.21 the GOTOOLCHAIN=auto
 # default makes `go build` self-bootstrap the version pinned in go.mod, so we
 # only need a recent-enough bootstrap here.
@@ -1043,8 +1071,17 @@ update_x-ui_from_source() {
         return 1
     }
 
-    rm -rf "${xui_folder}"
+    # Replace only the files we own. x-ui.db (panel database) and bin/
+    # (xray + geo data) survive across updates so we don't wipe user data
+    # or trigger pointless multi-MB redownloads.
     mkdir -p "${xui_folder}/bin"
+    rm -f "${xui_folder}/x-ui" \
+          "${xui_folder}/x-ui.sh" \
+          "${xui_folder}/x-ui.service" \
+          "${xui_folder}/x-ui.service.debian" \
+          "${xui_folder}/x-ui.service.arch" \
+          "${xui_folder}/x-ui.service.rhel" \
+          "${xui_folder}/x-ui.rc"
     cp -f "$SCRIPT_DIR/build/x-ui"           "${xui_folder}/x-ui"
     cp -f "$SCRIPT_DIR/x-ui.sh"              "${xui_folder}/x-ui.sh"
     [[ -f "$SCRIPT_DIR/x-ui.service.debian" ]] && cp -f "$SCRIPT_DIR/x-ui.service.debian" "${xui_folder}/"
@@ -1052,19 +1089,9 @@ update_x-ui_from_source() {
     [[ -f "$SCRIPT_DIR/x-ui.service.rhel"   ]] && cp -f "$SCRIPT_DIR/x-ui.service.rhel"   "${xui_folder}/"
     [[ -f "$SCRIPT_DIR/x-ui.rc"             ]] && cp -f "$SCRIPT_DIR/x-ui.rc"             "${xui_folder}/"
 
-    local panel_fname
-    panel_fname=$(xray_panel_arch)
-    if [[ -n "$panel_fname" && -f "$SCRIPT_DIR/build/bin/xray-linux-${panel_fname}" ]]; then
-        echo -e "${green}Reusing existing build/bin/xray-linux-${panel_fname} and geo data.${plain}"
-        cp -f "$SCRIPT_DIR/build/bin/"* "${xui_folder}/bin/" 2>/dev/null || true
-    elif [[ -n "$panel_fname" && -f "$SCRIPT_DIR/target/bin/xray-linux-${panel_fname}" ]]; then
-        echo -e "${green}Reusing existing target/bin/xray-linux-${panel_fname} and geo data.${plain}"
-        cp -f "$SCRIPT_DIR/target/bin/"* "${xui_folder}/bin/" 2>/dev/null || true
-    else
-        if ! download_xray_and_geo "${xui_folder}/bin"; then
-            echo -e "${red}Failed to fetch xray-core for the local-source update.${plain}"
-            return 1
-        fi
+    if ! fetch_xray_bundle_smart "${xui_folder}/bin"; then
+        echo -e "${red}Failed to fetch xray-core for the local-source update.${plain}"
+        return 1
     fi
 
     tag_version="${build_version}"
@@ -1404,40 +1431,44 @@ ensure_wireguard_native() {
 }
 
 echo -e "${green}Running...${plain}"
-# See install.sh for the rationale — same prompt for symmetry, so a user
-# updating an existing localhost-only debug install can opt back into
-# the same lean mode and the SSL prompt in config_after_update is skipped.
-prompt_debug_mode() {
+# Detects whether the existing install is in debug / localhost-only mode
+# and inherits that setting so the update doesn't surprise the user with
+# new prompts. Heuristic: panel binds to 127.0.0.1 AND no SSL cert is
+# configured. Env override XUI_DEBUG_MODE=1 always wins; in that case
+# XUI_DEBUG_PORT keeps whatever was either passed in env or pre-existing.
+detect_debug_mode_from_existing_install() {
     if [[ "${XUI_DEBUG_MODE:-}" == "1" ]]; then
-        echo -e "${yellow}Debug mode enabled via XUI_DEBUG_MODE=1.${plain}"
-        : "${XUI_DEBUG_PORT:=8080}"
-        export XUI_DEBUG_PORT
-        return
-    fi
-    echo ""
-    echo -e "${yellow}Update panel in debug / diagnostic mode (localhost only)? [y/N]${plain}"
-    echo -e "${yellow}(HTTP only, listen=127.0.0.1, no SSL or IPv6)${plain}"
-    read -rp "Debug mode? [y/N]: " __debug_choice
-    case "${__debug_choice,,}" in
-        y|yes)
+        echo -e "${yellow}Debug mode forced via XUI_DEBUG_MODE=1.${plain}"
+    elif [[ -x "${xui_folder}/x-ui" ]]; then
+        local existing_listen existing_cert
+        existing_listen=$(${xui_folder}/x-ui setting -getListen true 2>/dev/null | grep -Eo 'listenIP: .*' | awk '{print $2}')
+        existing_cert=$(${xui_folder}/x-ui setting -getCert true 2>/dev/null | grep 'cert:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
+        if [[ "${existing_listen}" == "127.0.0.1" && -z "${existing_cert}" ]]; then
             export XUI_DEBUG_MODE=1
-            local __port_choice=""
-            echo -en "${yellow}Panel port for debug mode? [8080]: ${plain}"
-            read -r __port_choice
-            if [[ -n "${__port_choice}" ]]; then
-                export XUI_DEBUG_PORT="${__port_choice}"
+            echo -e "${yellow}Detected debug / localhost-only install (listenIP=127.0.0.1, no SSL) — continuing in debug mode.${plain}"
+        else
+            export XUI_DEBUG_MODE=0
+        fi
+    else
+        export XUI_DEBUG_MODE=0
+    fi
+
+    # Carry the existing port forward in debug mode so the update keeps
+    # the same URL the user is already using.
+    if [[ "${XUI_DEBUG_MODE}" == "1" ]]; then
+        if [[ -z "${XUI_DEBUG_PORT:-}" ]]; then
+            local existing_port
+            existing_port=$(${xui_folder}/x-ui setting -show true 2>/dev/null | grep -Eo 'port: .+' | awk '{print $2}')
+            if [[ -n "${existing_port}" && "${existing_port}" != "0" ]]; then
+                export XUI_DEBUG_PORT="${existing_port}"
             else
                 export XUI_DEBUG_PORT=8080
             fi
-            echo -e "${green}Debug mode enabled — panel update will use http://127.0.0.1:${XUI_DEBUG_PORT}${plain}"
-            ;;
-        *)
-            export XUI_DEBUG_MODE=0
-            ;;
-    esac
+        fi
+    fi
 }
 
-prompt_debug_mode
+detect_debug_mode_from_existing_install
 install_base
 ensure_wireguard_native
 update_x-ui $1

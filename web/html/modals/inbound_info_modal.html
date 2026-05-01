@@ -169,7 +169,11 @@
           <a-divider>{{ i18n "pages.inbounds.client" }}</a-divider>
           <table :style="{ marginBottom: '10px' }">
             <tr>
-              <td>{{ i18n "pages.inbounds.email" }}</td>
+              <!-- For MIXED (SOCKS5) and HTTP the email field doubles as the
+                   basic-auth username; show the friendly "Username" label
+                   to match what's displayed in the edit-client modal. -->
+              <td v-if="dbInbound.isMixed || dbInbound.isHTTP">{{ i18n "username" }}</td>
+              <td v-else>{{ i18n "pages.inbounds.email" }}</td>
               <td v-if="infoModal.clientSettings.email">
                 <a-tag color="green">[[ infoModal.clientSettings.email
                   ]]</a-tag>

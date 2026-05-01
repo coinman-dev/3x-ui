@@ -649,7 +649,9 @@
                                                             class="client-popup-item"
                                                         >
                                                             <span
-                                                                >[[ getClientCountLabel(dbInbound.id, clientEmail)
+                                                                >[[
+                                                                getClientCountLabel(dbInbound.id,
+                                                                clientEmail)
                                                                 ]]</span
                                                             >
                                                             <a-tooltip
@@ -688,7 +690,9 @@
                                                             class="client-popup-item"
                                                         >
                                                             <span
-                                                                >[[ getClientCountLabel(dbInbound.id, clientEmail)
+                                                                >[[
+                                                                getClientCountLabel(dbInbound.id,
+                                                                clientEmail)
                                                                 ]]</span
                                                             >
                                                             <a-tooltip
@@ -728,7 +732,9 @@
                                                             class="client-popup-item"
                                                         >
                                                             <span
-                                                                >[[ getClientCountLabel(dbInbound.id, clientEmail)
+                                                                >[[
+                                                                getClientCountLabel(dbInbound.id,
+                                                                clientEmail)
                                                                 ]]</span
                                                             >
                                                             <a-tooltip
@@ -768,7 +774,9 @@
                                                             class="client-popup-item"
                                                         >
                                                             <span
-                                                                >[[ getClientCountLabel(dbInbound.id, clientEmail)
+                                                                >[[
+                                                                getClientCountLabel(dbInbound.id,
+                                                                clientEmail)
                                                                 ]]</span
                                                             >
                                                             <a-tooltip
@@ -1021,7 +1029,8 @@
                                                                         >
                                                                             <span
                                                                                 >[[
-                                                                                getClientCountLabel(dbInbound.id, clientEmail)
+                                                                                getClientCountLabel(dbInbound.id,
+                                                                                clientEmail)
                                                                                 ]]</span
                                                                             >
                                                                             <a-tooltip
@@ -1063,7 +1072,8 @@
                                                                         >
                                                                             <span
                                                                                 >[[
-                                                                                getClientCountLabel(dbInbound.id, clientEmail)
+                                                                                getClientCountLabel(dbInbound.id,
+                                                                                clientEmail)
                                                                                 ]]</span
                                                                             >
                                                                             <a-tooltip
@@ -1106,7 +1116,8 @@
                                                                         >
                                                                             <span
                                                                                 >[[
-                                                                                getClientCountLabel(dbInbound.id, clientEmail)
+                                                                                getClientCountLabel(dbInbound.id,
+                                                                                clientEmail)
                                                                                 ]]</span
                                                                             >
                                                                             <a-tooltip
@@ -1149,7 +1160,8 @@
                                                                         >
                                                                             <span
                                                                                 >[[
-                                                                                getClientCountLabel(dbInbound.id, clientEmail)
+                                                                                getClientCountLabel(dbInbound.id,
+                                                                                clientEmail)
                                                                                 ]]</span
                                                                             >
                                                                             <a-tooltip
@@ -1385,13 +1397,13 @@
         {
             title: '{{ i18n "pages.inbounds.operate" }}',
             align: "center",
-            width: 30,
+            width: 35,
             scopedSlots: { customRender: "action" },
         },
         {
             title: '{{ i18n "pages.inbounds.enable" }}',
             align: "center",
-            width: 35,
+            width: 40,
             scopedSlots: { customRender: "enable" },
         },
         {
@@ -1415,13 +1427,13 @@
         {
             title: '{{ i18n "clients" }}',
             align: "left",
-            width: 50,
+            width: 40,
             scopedSlots: { customRender: "clients" },
         },
         {
             title: '{{ i18n "pages.inbounds.traffic" }}',
             align: "center",
-            width: 90,
+            width: 85,
             scopedSlots: { customRender: "traffic" },
         },
         {
@@ -1433,7 +1445,7 @@
         {
             title: '{{ i18n "pages.inbounds.expireDate" }}',
             align: "center",
-            width: 40,
+            width: 45,
             scopedSlots: { customRender: "expiryTime" },
         },
     ];
@@ -1473,45 +1485,46 @@
         // Иконки действий: QR, редактировать, инфо, сброс трафика, удалить
         {
             title: '{{ i18n "pages.inbounds.operate" }}',
-            width: '12%',
+            width: 80,
+            align: "center",
             scopedSlots: { customRender: "actions" },
         },
         // Тумблер вкл/выкл клиента
         {
             title: '{{ i18n "pages.inbounds.enable" }}',
-            width: '9%',
+            width: 40,
             scopedSlots: { customRender: "enable" },
         },
         // Бейдж онлайн/офлайн (по последнему handshake)
         {
             title: '{{ i18n "online" }}',
-            width: '10%',
+            width: 40,
             scopedSlots: { customRender: "online" },
         },
         // Email клиента + индикатор статуса + комментарий
         {
             title: '{{ i18n "pages.inbounds.client" }}',
-            width: '22%',
+            width: 80,
             scopedSlots: { customRender: "client" },
         },
         // Полоса использования трафика (up/down) с лимитом
         {
             title: '{{ i18n "pages.inbounds.traffic" }}',
-            width: '22%',
+            width: 80,
             align: "center",
             scopedSlots: { customRender: "traffic" },
         },
         // Суммарный трафик за всё время (без сбросов)
         {
             title: '{{ i18n "pages.inbounds.allTimeTraffic" }}',
-            width: '11%',
+            width: 60,
             align: "center",
             scopedSlots: { customRender: "allTime" },
         },
         // Дата окончания подписки или ∞
         {
             title: '{{ i18n "pages.inbounds.expireDate" }}',
-            width: '14%',
+            width: 80,
             align: "center",
             scopedSlots: { customRender: "expiryTime" },
         },
@@ -1524,52 +1537,53 @@
         // Иконки действий: QR, редактировать, инфо, сброс трафика, удалить
         {
             title: '{{ i18n "pages.inbounds.operate" }}',
-            width: '11%',
+            width: 80,
+            align: "center",
             scopedSlots: { customRender: "actions" },
         },
         // Тумблер вкл/выкл клиента
         {
             title: '{{ i18n "pages.inbounds.enable" }}',
-            width: '8%',
+            width: 40,
             scopedSlots: { customRender: "enable" },
         },
         // Бейдж онлайн/офлайн (по последнему handshake)
         {
             title: '{{ i18n "online" }}',
-            width: '9%',
+            width: 40,
             scopedSlots: { customRender: "online" },
         },
         // Email клиента + индикатор статуса + комментарий
         {
             title: '{{ i18n "pages.inbounds.client" }}',
-            width: '19%',
+            width: 80,
             scopedSlots: { customRender: "client" },
         },
         // Проброшенные на этого клиента порты (DNAT TCP+UDP), только AWG/WG
         {
             title: '{{ i18n "pages.inbounds.forwardedPortsShort" }}',
-            width: '10%',
+            width: 60,
             align: "center",
             scopedSlots: { customRender: "forwardedPorts" },
         },
         // Полоса использования трафика (up/down) с лимитом
         {
             title: '{{ i18n "pages.inbounds.traffic" }}',
-            width: '19%',
+            width: 80,
             align: "center",
             scopedSlots: { customRender: "traffic" },
         },
         // Суммарный трафик за всё время (без сбросов)
         {
             title: '{{ i18n "pages.inbounds.allTimeTraffic" }}',
-            width: '10%',
+            width: 60,
             align: "center",
             scopedSlots: { customRender: "allTime" },
         },
         // Дата окончания подписки или ∞
         {
             title: '{{ i18n "pages.inbounds.expireDate" }}',
-            width: '14%',
+            width: 80,
             align: "center",
             scopedSlots: { customRender: "expiryTime" },
         },
@@ -1579,21 +1593,21 @@
         // Меню действий (троеточие → выпадающий список)
         {
             title: '{{ i18n "pages.inbounds.operate" }}',
-            width: '10%',
+            width: "20%",
             align: "center",
             scopedSlots: { customRender: "actionMenu" },
         },
         // Email клиента + индикатор статуса + комментарий
         {
             title: '{{ i18n "pages.inbounds.client" }}',
-            width: '80%',
+            width: "55%",
             align: "left",
             scopedSlots: { customRender: "client" },
         },
         // Кнопка "i" → попап со сводкой трафика и срока
         {
             title: '{{ i18n "pages.inbounds.info" }}',
-            width: '10%',
+            width: "25%",
             align: "center",
             scopedSlots: { customRender: "info" },
         },
@@ -1603,28 +1617,28 @@
         // Меню действий (троеточие → выпадающий список)
         {
             title: '{{ i18n "pages.inbounds.operate" }}',
-            width: '10%',
+            width: "15%",
             align: "center",
             scopedSlots: { customRender: "actionMenu" },
         },
         // Email клиента + индикатор статуса + комментарий
         {
             title: '{{ i18n "pages.inbounds.client" }}',
-            width: '50%',
+            width: "35%",
             align: "left",
             scopedSlots: { customRender: "client" },
         },
         // Проброшенные на этого клиента порты (DNAT TCP+UDP), только AWG/WG
         {
             title: '{{ i18n "pages.inbounds.forwardedPortsShort" }}',
-            width: '25%',
+            width: "25%",
             align: "center",
             scopedSlots: { customRender: "forwardedPorts" },
         },
         // Кнопка "i" → попап со сводкой трафика и срока
         {
             title: '{{ i18n "pages.inbounds.info" }}',
-            width: '15%',
+            width: "25%",
             align: "center",
             scopedSlots: { customRender: "info" },
         },
@@ -1685,7 +1699,8 @@
             // Returns the column set for an inbound's peer/client table.
             // AWG and native WG inbounds get an extra "Port forwarding" column.
             pickInnerColumns(record, mobile) {
-                const isWg = record && (record.isAmneziawg || record.isNativewg);
+                const isWg =
+                    record && (record.isAmneziawg || record.isNativewg);
                 if (mobile) {
                     return isWg ? innerMobileColumnsWg : innerMobileColumns;
                 }
@@ -1977,8 +1992,7 @@
                                 dbInbound.protocol,
                                 client,
                             );
-                            const clientLabel =
-                                client.email || clientKey || "";
+                            const clientLabel = client.email || clientKey || "";
                             if (client.comment) {
                                 comments.set(clientKey, client.comment);
                             }
@@ -2662,7 +2676,9 @@
                     clientModal.loading(false);
                     return;
                 }
-                const wgClient = clientsMsg.obj.find((c) => c.uuid === clientId);
+                const wgClient = clientsMsg.obj.find(
+                    (c) => c.uuid === clientId,
+                );
                 if (!wgClient) {
                     clientModal.loading(false);
                     return;

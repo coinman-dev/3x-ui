@@ -1597,9 +1597,10 @@ xray_panel_arch() {
 }
 
 # Downloads xray binary + geo data files into the given target directory.
-# Mirrors the logic in DockerInit.sh — same xray version (v26.3.27), same geo
-# data sources. Used both by the local-source build (when build/bin is empty)
-# and could be reused for any other install path that needs a clean bin/.
+# Mirrors the logic in DockerInit.sh — same xray version (v26.3.27), same
+# geo-data sources. Always called fresh; we deliberately never reuse a
+# previously-downloaded copy from build/bin or target/bin so an install
+# can't inherit stale geo rules or an old xray binary.
 download_xray_and_geo() {
     local target_bin_dir="$1"
     local xray_arch xray_fname xray_url
@@ -1672,6 +1673,38 @@ download_xray_and_geo() {
     check_url_or_skip "$geo_url" "geosite_RU.dat (Russia rules)" && \
         curl -4sfLRo "$target_bin_dir/geosite_RU.dat" "$geo_url"
     return 0
+}
+
+# Wrapper around download_xray_and_geo that, in debug mode only, looks
+# for an already-present xray + geo bundle in well-known cache locations
+# and reuses it instead of re-downloading. Production / non-debug
+# installs always pull fresh upstream copies. Cache locations checked
+# (in order):
+#   1. ${xui_folder}/bin   — preserved across updates after the rm-rf fix.
+#   2. ${SCRIPT_DIR}/build/bin — left over from an earlier local build.
+#   3. ${SCRIPT_DIR}/target/bin — same.
+fetch_xray_bundle_smart() {
+    local target_bin_dir="$1"
+    local panel_fname
+    panel_fname=$(xray_panel_arch)
+
+    if [[ "${XUI_DEBUG_MODE:-}" == "1" && -n "$panel_fname" ]]; then
+        if [[ -f "$target_bin_dir/xray-linux-${panel_fname}" ]]; then
+            echo -e "${green}xray-core + geo data already in ${target_bin_dir}, skipping download.${plain}"
+            return 0
+        fi
+        local src_dir
+        for src_dir in "$SCRIPT_DIR/build/bin" "$SCRIPT_DIR/target/bin"; do
+            if [[ -f "$src_dir/xray-linux-${panel_fname}" ]]; then
+                echo -e "${green}Reusing xray + geo bundle from ${src_dir}.${plain}"
+                mkdir -p "$target_bin_dir"
+                cp -f "$src_dir"/* "$target_bin_dir/" 2>/dev/null || true
+                return 0
+            fi
+        done
+    fi
+
+    download_xray_and_geo "$target_bin_dir"
 }
 
 # Ensures a Go toolchain ≥ 1.21 is on PATH. With Go ≥ 1.21 the GOTOOLCHAIN=auto
@@ -1767,8 +1800,18 @@ install_x-ui_from_source() {
         return 1
     }
 
-    rm -rf "${xui_folder}"
+    # Replace only the files we own. Crucially we keep x-ui.db (panel
+    # database) and bin/ (xray + geo data) intact across re-installs so a
+    # repeated install doesn't wipe user data or trigger an unnecessary
+    # multi-MB xray re-download.
     mkdir -p "${xui_folder}/bin"
+    rm -f "${xui_folder}/x-ui" \
+          "${xui_folder}/x-ui.sh" \
+          "${xui_folder}/x-ui.service" \
+          "${xui_folder}/x-ui.service.debian" \
+          "${xui_folder}/x-ui.service.arch" \
+          "${xui_folder}/x-ui.service.rhel" \
+          "${xui_folder}/x-ui.rc"
     cp -f "$SCRIPT_DIR/build/x-ui"           "${xui_folder}/x-ui"
     cp -f "$SCRIPT_DIR/x-ui.sh"              "${xui_folder}/x-ui.sh"
     [[ -f "$SCRIPT_DIR/x-ui.service.debian" ]] && cp -f "$SCRIPT_DIR/x-ui.service.debian" "${xui_folder}/"
@@ -1776,21 +1819,9 @@ install_x-ui_from_source() {
     [[ -f "$SCRIPT_DIR/x-ui.service.rhel"   ]] && cp -f "$SCRIPT_DIR/x-ui.service.rhel"   "${xui_folder}/"
     [[ -f "$SCRIPT_DIR/x-ui.rc"             ]] && cp -f "$SCRIPT_DIR/x-ui.rc"             "${xui_folder}/"
 
-    # Reuse a previously-downloaded xray + geo bundle if it exists from a prior
-    # build (e.g. the maintainer ran DockerInit.sh once); otherwise fetch fresh.
-    local panel_fname
-    panel_fname=$(xray_panel_arch)
-    if [[ -n "$panel_fname" && -f "$SCRIPT_DIR/build/bin/xray-linux-${panel_fname}" ]]; then
-        echo -e "${green}Reusing existing build/bin/xray-linux-${panel_fname} and geo data.${plain}"
-        cp -f "$SCRIPT_DIR/build/bin/"* "${xui_folder}/bin/" 2>/dev/null || true
-    elif [[ -n "$panel_fname" && -f "$SCRIPT_DIR/target/bin/xray-linux-${panel_fname}" ]]; then
-        echo -e "${green}Reusing existing target/bin/xray-linux-${panel_fname} and geo data.${plain}"
-        cp -f "$SCRIPT_DIR/target/bin/"* "${xui_folder}/bin/" 2>/dev/null || true
-    else
-        if ! download_xray_and_geo "${xui_folder}/bin"; then
-            echo -e "${red}Failed to fetch xray-core for the local-source install.${plain}"
-            return 1
-        fi
+    if ! fetch_xray_bundle_smart "${xui_folder}/bin"; then
+        echo -e "${red}Failed to fetch xray-core for the local-source install.${plain}"
+        return 1
     fi
 
     cp -f "${xui_folder}/x-ui.sh" /usr/bin/x-ui-temp

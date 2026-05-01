@@ -116,6 +116,45 @@ random_port_candidate() {
     echo $((min_port + ((((RANDOM << 15) | RANDOM)) % span)))
 }
 
+# Returns 0 if the URL host responds within a short timeout, non-zero on
+# connection / DNS / TLS failure. Uses HEAD so we don't pull the full
+# asset just to test reachability — important for the multi-MB xray-core
+# zip and geo data files. We deliberately do NOT pass -f: a 404 still
+# means the network path works, and the actual download (or apt-get
+# update) will surface the real error if a path is wrong.
+url_reachable() {
+    curl --connect-timeout 5 --max-time 10 -sSIL -o /dev/null "$1" 2>/dev/null
+}
+
+# Probes URL reachability before downloading. If unreachable, prints a
+# clear error naming the broken URL, asks the user whether to continue
+# without that resource (default Y = skip and proceed), and returns 1.
+# Aborts the script on N. Returns 0 on success so callers can guard
+# their download blocks behind a single if-statement.
+check_url_or_skip() {
+    local url="$1"
+    local label="$2"
+    if url_reachable "$url"; then
+        return 0
+    fi
+    echo ""
+    echo -e "${yellow}══════════════════════════════════════════════════════${plain}"
+    echo -e "${yellow}  Failed to reach: ${url}${plain}"
+    echo -e "${yellow}  Module / file:   ${label}${plain}"
+    echo -e "${yellow}══════════════════════════════════════════════════════${plain}"
+    read -rp "Continue without it? [Y/n]: " __skip_choice
+    case "${__skip_choice,,}" in
+        n|no)
+            echo -e "${red}Aborted by user.${plain}"
+            exit 1
+            ;;
+        *)
+            echo -e "${yellow}Skipping ${label}.${plain}"
+            return 1
+            ;;
+    esac
+}
+
 pick_random_port() {
     local min_port="${1:-10000}"
     local max_port="${2:-65535}"
@@ -752,7 +791,61 @@ prompt_and_setup_ssl() {
     esac
 }
 
+# Localhost-only debug install. Plain HTTP, listen=127.0.0.1, port and
+# credentials decided up-front by prompt_debug_mode(), no SSL prompt,
+# no public-IP detection, no IPv6.
+config_debug_mode() {
+    local existing_hasDefaultCredential=$(${xui_folder}/x-ui setting -show true | grep -Eo 'hasDefaultCredential: .+' | awk '{print $2}')
+    local existing_webBasePath=$(${xui_folder}/x-ui setting -show true | grep -Eo 'webBasePath: .+' | awk '{print $2}' | sed 's#^/##')
+
+    local config_port="${XUI_DEBUG_PORT:-8080}"
+
+    local config_username
+    local config_password
+    local config_webBasePath
+    if [[ "$existing_hasDefaultCredential" == "true" || ${#existing_webBasePath} -lt 4 ]]; then
+        config_username=$(gen_random_string 10)
+        config_password=$(gen_random_string 10)
+        config_webBasePath=$(gen_random_string 18)
+        ${xui_folder}/x-ui setting -username "${config_username}" -password "${config_password}" -port "${config_port}" -webBasePath "${config_webBasePath}"
+    else
+        config_webBasePath="${existing_webBasePath}"
+        ${xui_folder}/x-ui setting -port "${config_port}"
+    fi
+
+    # Bind to loopback only.
+    ${xui_folder}/x-ui setting -listenIP "127.0.0.1"
+
+    ${xui_folder}/x-ui migrate
+
+    echo ""
+    echo -e "${green}═══════════════════════════════════════════${plain}"
+    echo -e "${green}  Panel installed in DEBUG / localhost mode  ${plain}"
+    echo -e "${green}═══════════════════════════════════════════${plain}"
+    if [[ -n "${config_username}" ]]; then
+        echo -e "${green}Username:    ${config_username}${plain}"
+        echo -e "${green}Password:    ${config_password}${plain}"
+    else
+        echo -e "${yellow}Username/password unchanged from previous install.${plain}"
+    fi
+    echo -e "${green}Port:        ${config_port}${plain}"
+    echo -e "${green}WebBasePath: ${config_webBasePath}${plain}"
+    echo -e "${green}Listen:      127.0.0.1 (loopback only)${plain}"
+    echo -e "${green}Access URL:  http://127.0.0.1:${config_port}/${config_webBasePath}${plain}"
+    echo -e "${green}             http://localhost:${config_port}/${config_webBasePath}${plain}"
+    echo -e "${green}═══════════════════════════════════════════${plain}"
+    echo -e "${yellow}⚠ Plain HTTP, no certificate, no remote access. For local diagnostics only.${plain}"
+}
+
 config_after_install() {
+    # Debug / localhost-only mode short-circuits the SSL + public-IP +
+    # IPv6 logic below. The panel binds to 127.0.0.1, listens on plain
+    # HTTP, defaults to port 8080, and exposes no remote endpoints.
+    if [[ "${XUI_DEBUG_MODE:-}" == "1" ]]; then
+        config_debug_mode
+        return
+    fi
+
     local existing_hasDefaultCredential=$(${xui_folder}/x-ui setting -show true | grep -Eo 'hasDefaultCredential: .+' | awk '{print $2}')
     local existing_webBasePath=$(${xui_folder}/x-ui setting -show true | grep -Eo 'webBasePath: .+' | awk '{print $2}' | sed 's#^/##')
     local existing_port=$(${xui_folder}/x-ui setting -show true | grep -Eo 'port: .+' | awk '{print $2}')
@@ -921,6 +1014,16 @@ install_amneziawg() {
     # Method 1: official AmneziaVPN apt repo (Debian/Ubuntu)
     if [[ "${release}" == "ubuntu" || "${release}" == "debian" || "${release}" == "armbian" ]]; then
         if ! command -v awg &>/dev/null; then
+            # Pre-flight check: Launchpad PPA host is frequently blocked by
+            # hosting providers (especially Russian VPS). Probe before adding
+            # the PPA so the user gets a clear "skip or abort" prompt instead
+            # of waiting through several apt timeouts.
+            if ! check_url_or_skip "https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu/dists/focal/Release" "AmneziaWG (ppa.launchpadcontent.net)"; then
+                echo -e "${yellow}AmneziaWG installation skipped — install it manually later if needed:${plain}"
+                echo -e "${yellow}  https://github.com/amnezia-vpn/amneziawg-linux-kernel-module${plain}"
+                install_ndppd
+                return
+            fi
             echo -e "${yellow}Installing amneziawg from ppa:amnezia/ppa...${plain}"
             apt-get install -y -q software-properties-common python3-launchpadlib gnupg2 linux-headers-$(uname -r) 2>/dev/null || true
             # Ensure deb-src is present (required for PPA DKMS build)
@@ -1518,9 +1621,16 @@ download_xray_and_geo() {
     fi
 
     mkdir -p "$target_bin_dir"
-    local tmp_zip
-    tmp_zip="/tmp/xray-core.$$.zip"
+    local tmp_zip="/tmp/xray-core.$$.zip"
     xray_url="https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-${xray_arch}.zip"
+
+    # xray binary is mandatory — without it the panel can't run any
+    # protocol. Probe the URL up-front so the user gets a clean prompt
+    # instead of waiting through curl's full retry loop on a dead host.
+    if ! check_url_or_skip "$xray_url" "xray-core binary"; then
+        echo -e "${red}Cannot proceed without xray-core — aborting xray bundle download.${plain}"
+        return 1
+    fi
     echo -e "${green}Downloading xray-core ${xray_url}...${plain}"
     if ! curl -4fLRo "$tmp_zip" "$xray_url"; then
         rm -f "$tmp_zip"
@@ -1539,13 +1649,28 @@ download_xray_and_geo() {
         chmod +x "$target_bin_dir/xray-linux-${xray_fname}"
     fi
 
+    # Geo data files are optional — panel boots fine without them, just
+    # falls back to no-routing-rules. Probe each before fetching.
     echo -e "${green}Downloading geo data...${plain}"
-    curl -4sfLRo "$target_bin_dir/geoip.dat"     https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
-    curl -4sfLRo "$target_bin_dir/geosite.dat"   https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
-    curl -4sfLRo "$target_bin_dir/geoip_IR.dat"   https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat
-    curl -4sfLRo "$target_bin_dir/geosite_IR.dat" https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat
-    curl -4sfLRo "$target_bin_dir/geoip_RU.dat"   https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat
-    curl -4sfLRo "$target_bin_dir/geosite_RU.dat" https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat
+    local geo_url
+    geo_url="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat"
+    check_url_or_skip "$geo_url" "geoip.dat (Loyalsoldier)" && \
+        curl -4sfLRo "$target_bin_dir/geoip.dat" "$geo_url"
+    geo_url="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
+    check_url_or_skip "$geo_url" "geosite.dat (Loyalsoldier)" && \
+        curl -4sfLRo "$target_bin_dir/geosite.dat" "$geo_url"
+    geo_url="https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat"
+    check_url_or_skip "$geo_url" "geoip_IR.dat (Iran rules)" && \
+        curl -4sfLRo "$target_bin_dir/geoip_IR.dat" "$geo_url"
+    geo_url="https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat"
+    check_url_or_skip "$geo_url" "geosite_IR.dat (Iran rules)" && \
+        curl -4sfLRo "$target_bin_dir/geosite_IR.dat" "$geo_url"
+    geo_url="https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat"
+    check_url_or_skip "$geo_url" "geoip_RU.dat (Russia rules)" && \
+        curl -4sfLRo "$target_bin_dir/geoip_RU.dat" "$geo_url"
+    geo_url="https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat"
+    check_url_or_skip "$geo_url" "geosite_RU.dat (Russia rules)" && \
+        curl -4sfLRo "$target_bin_dir/geosite_RU.dat" "$geo_url"
     return 0
 }
 
@@ -1588,9 +1713,11 @@ ensure_go() {
 
     local go_version="1.26.2"
     local go_url="https://go.dev/dl/go${go_version}.linux-${goarch}.tar.gz"
-    local tmp_tgz
-    tmp_tgz="/tmp/go-bootstrap.$$.tar.gz"
+    local tmp_tgz="/tmp/go-bootstrap.$$.tar.gz"
 
+    if ! check_url_or_skip "$go_url" "Go ${go_version} bootstrap"; then
+        return 1
+    fi
     echo -e "${green}Installing Go ${go_version} from ${go_url}...${plain}"
     if ! curl -4fLRo "$tmp_tgz" "$go_url"; then
         rm -f "$tmp_tgz"
@@ -1908,7 +2035,48 @@ install_x-ui() {
     install_x-ui_finalize
 }
 
+# Diagnostic / localhost-only install. When enabled the panel binds to
+# 127.0.0.1 only, runs over plain HTTP, defaults to port 8080, and skips
+# the SSL / public-IP / IPv6 prompts. Protocol stacks (AmneziaWG,
+# WireGuard Native, xray) are still installed normally — only the
+# panel's web access is restricted. Activated either by the interactive
+# prompt below or by pre-setting XUI_DEBUG_MODE=1 in the environment.
+prompt_debug_mode() {
+    if [[ "${XUI_DEBUG_MODE:-}" == "1" ]]; then
+        echo -e "${yellow}Debug mode enabled via XUI_DEBUG_MODE=1.${plain}"
+        : "${XUI_DEBUG_PORT:=8080}"
+        export XUI_DEBUG_PORT
+        return
+    fi
+    echo ""
+    echo -e "${yellow}Install panel in debug / diagnostic mode (localhost only)? [y/N]${plain}"
+    echo -e "${yellow}(HTTP only, listen=127.0.0.1, default port 8080, no SSL or IPv6)${plain}"
+    read -rp "Debug mode? [y/N]: " __debug_choice
+    case "${__debug_choice,,}" in
+        y|yes)
+            export XUI_DEBUG_MODE=1
+            # Ask for the panel port immediately so the user sees the
+            # complete debug-mode setup decided up-front, before any
+            # downloads or installs run. read -rp doesn't render color
+            # escapes, so we print the prompt with echo -en first.
+            local __port_choice=""
+            echo -en "${yellow}Panel port for debug mode? [8080]: ${plain}"
+            read -r __port_choice
+            if [[ -n "${__port_choice}" ]]; then
+                export XUI_DEBUG_PORT="${__port_choice}"
+            else
+                export XUI_DEBUG_PORT=8080
+            fi
+            echo -e "${green}Debug mode enabled — panel will be installed on http://127.0.0.1:${XUI_DEBUG_PORT}${plain}"
+            ;;
+        *)
+            export XUI_DEBUG_MODE=0
+            ;;
+    esac
+}
+
 echo -e "${green}Running...${plain}"
+prompt_debug_mode
 install_base
 install_amneziawg
 install_wireguard_native

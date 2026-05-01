@@ -133,6 +133,40 @@ gen_random_string() {
     echo "$random_string"
 }
 
+# Returns 0 if the URL host responds within a short timeout, non-zero on
+# connection / DNS / TLS failure. HEAD-only so we don't pull the full
+# asset just to probe. No -f: a 404 still means the network path works.
+url_reachable() {
+    ${curl_bin} --connect-timeout 5 --max-time 10 -sSIL -o /dev/null "$1" 2>/dev/null
+}
+
+# Probes URL reachability before downloading. If unreachable, names the
+# broken URL and asks the user whether to continue without that resource
+# (default Y = skip and proceed). Aborts the script on N.
+check_url_or_skip() {
+    local url="$1"
+    local label="$2"
+    if url_reachable "$url"; then
+        return 0
+    fi
+    echo ""
+    echo -e "${yellow}══════════════════════════════════════════════════════${plain}"
+    echo -e "${yellow}  Failed to reach: ${url}${plain}"
+    echo -e "${yellow}  Module / file:   ${label}${plain}"
+    echo -e "${yellow}══════════════════════════════════════════════════════${plain}"
+    read -rp "Continue without it? [Y/n]: " __skip_choice
+    case "${__skip_choice,,}" in
+        n|no)
+            echo -e "${red}Aborted by user.${plain}"
+            exit 1
+            ;;
+        *)
+            echo -e "${yellow}Skipping ${label}.${plain}"
+            return 1
+            ;;
+    esac
+}
+
 install_base() {
     echo -e "${green}Updating and install dependency packages...${plain}"
     case "${release}" in
@@ -695,7 +729,54 @@ prompt_and_setup_ssl() {
     esac
 }
 
+# Localhost-only debug update. Plain HTTP, listen=127.0.0.1, port default
+# 8080 (kept if already set), no SSL prompt, no public-IP detection.
+config_debug_mode_after_update() {
+    echo -e "${yellow}x-ui settings (debug mode):${plain}"
+    ${xui_folder}/x-ui setting -show true
+    ${xui_folder}/x-ui migrate
+
+    local existing_port=$(${xui_folder}/x-ui setting -show true | grep -Eo 'port: .+' | awk '{print $2}')
+    local existing_webBasePath=$(${xui_folder}/x-ui setting -show true | grep -Eo 'webBasePath: .+' | awk '{print $2}' | sed 's#^/##')
+
+    # Prefer the port the user picked at the start of the update; only
+    # fall back to whatever was previously configured if they didn't
+    # answer the prompt (e.g. running with an older XUI_DEBUG_PORT env).
+    local desired_port="${XUI_DEBUG_PORT:-${existing_port}}"
+    if [[ -z "${desired_port}" || "${desired_port}" == "0" ]]; then
+        desired_port=8080
+    fi
+    if [[ "${desired_port}" != "${existing_port}" ]]; then
+        ${xui_folder}/x-ui setting -port "${desired_port}"
+        existing_port="${desired_port}"
+    fi
+    if [[ ${#existing_webBasePath} -lt 4 ]]; then
+        existing_webBasePath=$(gen_random_string 18)
+        ${xui_folder}/x-ui setting -webBasePath "${existing_webBasePath}"
+    fi
+
+    # Force loopback bind on every update so a previously-public install
+    # can be safely flipped to debug mode.
+    ${xui_folder}/x-ui setting -listenIP "127.0.0.1"
+
+    echo ""
+    echo -e "${green}═══════════════════════════════════════════${plain}"
+    echo -e "${green}  Panel updated in DEBUG / localhost mode    ${plain}"
+    echo -e "${green}═══════════════════════════════════════════${plain}"
+    echo -e "${green}Port:        ${existing_port}${plain}"
+    echo -e "${green}WebBasePath: ${existing_webBasePath}${plain}"
+    echo -e "${green}Listen:      127.0.0.1 (loopback only)${plain}"
+    echo -e "${green}Access URL:  http://127.0.0.1:${existing_port}/${existing_webBasePath}${plain}"
+    echo -e "${green}             http://localhost:${existing_port}/${existing_webBasePath}${plain}"
+    echo -e "${green}═══════════════════════════════════════════${plain}"
+}
+
 config_after_update() {
+    if [[ "${XUI_DEBUG_MODE:-}" == "1" ]]; then
+        config_debug_mode_after_update
+        return
+    fi
+
     echo -e "${yellow}x-ui settings:${plain}"
     ${xui_folder}/x-ui setting -show true
     ${xui_folder}/x-ui migrate
@@ -825,9 +906,13 @@ download_xray_and_geo() {
     fi
 
     mkdir -p "$target_bin_dir"
-    local tmp_zip
-    tmp_zip="/tmp/xray-core.$$.zip"
+    local tmp_zip="/tmp/xray-core.$$.zip"
     xray_url="https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-${xray_arch}.zip"
+
+    if ! check_url_or_skip "$xray_url" "xray-core binary"; then
+        echo -e "${red}Cannot proceed without xray-core — aborting xray bundle download.${plain}"
+        return 1
+    fi
     echo -e "${green}Downloading xray-core ${xray_url}...${plain}"
     if ! ${curl_bin} -4fLRo "$tmp_zip" "$xray_url"; then
         rm -f "$tmp_zip"
@@ -847,12 +932,25 @@ download_xray_and_geo() {
     fi
 
     echo -e "${green}Downloading geo data...${plain}"
-    ${curl_bin} -4sfLRo "$target_bin_dir/geoip.dat"     https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
-    ${curl_bin} -4sfLRo "$target_bin_dir/geosite.dat"   https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
-    ${curl_bin} -4sfLRo "$target_bin_dir/geoip_IR.dat"   https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat
-    ${curl_bin} -4sfLRo "$target_bin_dir/geosite_IR.dat" https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat
-    ${curl_bin} -4sfLRo "$target_bin_dir/geoip_RU.dat"   https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat
-    ${curl_bin} -4sfLRo "$target_bin_dir/geosite_RU.dat" https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat
+    local geo_url
+    geo_url="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat"
+    check_url_or_skip "$geo_url" "geoip.dat (Loyalsoldier)" && \
+        ${curl_bin} -4sfLRo "$target_bin_dir/geoip.dat" "$geo_url"
+    geo_url="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
+    check_url_or_skip "$geo_url" "geosite.dat (Loyalsoldier)" && \
+        ${curl_bin} -4sfLRo "$target_bin_dir/geosite.dat" "$geo_url"
+    geo_url="https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat"
+    check_url_or_skip "$geo_url" "geoip_IR.dat (Iran rules)" && \
+        ${curl_bin} -4sfLRo "$target_bin_dir/geoip_IR.dat" "$geo_url"
+    geo_url="https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat"
+    check_url_or_skip "$geo_url" "geosite_IR.dat (Iran rules)" && \
+        ${curl_bin} -4sfLRo "$target_bin_dir/geosite_IR.dat" "$geo_url"
+    geo_url="https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat"
+    check_url_or_skip "$geo_url" "geoip_RU.dat (Russia rules)" && \
+        ${curl_bin} -4sfLRo "$target_bin_dir/geoip_RU.dat" "$geo_url"
+    geo_url="https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat"
+    check_url_or_skip "$geo_url" "geosite_RU.dat (Russia rules)" && \
+        ${curl_bin} -4sfLRo "$target_bin_dir/geosite_RU.dat" "$geo_url"
     return 0
 }
 
@@ -892,9 +990,11 @@ ensure_go() {
 
     local go_version="1.26.2"
     local go_url="https://go.dev/dl/go${go_version}.linux-${goarch}.tar.gz"
-    local tmp_tgz
-    tmp_tgz="/tmp/go-bootstrap.$$.tar.gz"
+    local tmp_tgz="/tmp/go-bootstrap.$$.tar.gz"
 
+    if ! check_url_or_skip "$go_url" "Go ${go_version} bootstrap"; then
+        return 1
+    fi
     echo -e "${green}Installing Go ${go_version} from ${go_url}...${plain}"
     if ! ${curl_bin} -4fLRo "$tmp_tgz" "$go_url"; then
         rm -f "$tmp_tgz"
@@ -1304,6 +1404,40 @@ ensure_wireguard_native() {
 }
 
 echo -e "${green}Running...${plain}"
+# See install.sh for the rationale — same prompt for symmetry, so a user
+# updating an existing localhost-only debug install can opt back into
+# the same lean mode and the SSL prompt in config_after_update is skipped.
+prompt_debug_mode() {
+    if [[ "${XUI_DEBUG_MODE:-}" == "1" ]]; then
+        echo -e "${yellow}Debug mode enabled via XUI_DEBUG_MODE=1.${plain}"
+        : "${XUI_DEBUG_PORT:=8080}"
+        export XUI_DEBUG_PORT
+        return
+    fi
+    echo ""
+    echo -e "${yellow}Update panel in debug / diagnostic mode (localhost only)? [y/N]${plain}"
+    echo -e "${yellow}(HTTP only, listen=127.0.0.1, no SSL or IPv6)${plain}"
+    read -rp "Debug mode? [y/N]: " __debug_choice
+    case "${__debug_choice,,}" in
+        y|yes)
+            export XUI_DEBUG_MODE=1
+            local __port_choice=""
+            echo -en "${yellow}Panel port for debug mode? [8080]: ${plain}"
+            read -r __port_choice
+            if [[ -n "${__port_choice}" ]]; then
+                export XUI_DEBUG_PORT="${__port_choice}"
+            else
+                export XUI_DEBUG_PORT=8080
+            fi
+            echo -e "${green}Debug mode enabled — panel update will use http://127.0.0.1:${XUI_DEBUG_PORT}${plain}"
+            ;;
+        *)
+            export XUI_DEBUG_MODE=0
+            ;;
+    esac
+}
+
+prompt_debug_mode
 install_base
 ensure_wireguard_native
 update_x-ui $1

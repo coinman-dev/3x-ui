@@ -9,10 +9,11 @@
     <a-form-item label='{{ i18n "pages.inbounds.enable" }}'>
         <a-switch v-model="client.enable"></a-switch>
     </a-form-item>
-    <!-- MIXED (SOCKS5) and HTTP: login is the basic-auth username and is
-         used as the per-user identity for traffic stats, so it's read-only.
-         Regenerable on Add only — once the client exists, changing its
-         username would orphan its traffic counters. 6 lowercase-alnum chars. -->
+    <!-- MIXED (SOCKS5) and HTTP: the username field doubles as the
+         basic-auth login and as the per-user identity for traffic
+         stats. Editable in both Add and Edit; on rename the backend
+         updates the existing client_traffic row in place via
+         UpdateClientStat(oldEmail, newEmail) so counters survive. -->
     <a-form-item
         v-if="inbound.protocol === Protocols.MIXED || inbound.protocol === Protocols.HTTP"
     >
@@ -23,13 +24,12 @@
                 </template>
                 {{ i18n "username" }}
                 <a-icon
-                    v-if="!isEdit"
                     type="sync"
                     @click="client.email = RandomUtil.randomLowerAndNum(6)"
                 ></a-icon>
             </a-tooltip>
         </template>
-        <a-input :value="client.email" read-only></a-input>
+        <a-input v-model.trim="client.email"></a-input>
     </a-form-item>
     <!-- Other protocols: standard editable email/identifier. -->
     <a-form-item
